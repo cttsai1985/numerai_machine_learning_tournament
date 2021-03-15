@@ -1,2 +1,6 @@
-# numerai_machine_learning_tournament
-code for numerai project
+### NumerAPI
+
+https://numerapi.readthedocs.io/en/latest/api/numerapi.html
+
+
+#TODO: best practice api key with docker
