@@ -2,6 +2,8 @@ import sys
 import os
 import json
 import re
+import joblib
+from copy import deepcopy
 import logging
 import pandas as pd
 from pathlib import Path
@@ -11,6 +13,7 @@ from sklearn.model_selection import BaseCrossValidator
 from sklearn.base import BaseEstimator
 
 from . import DataManager
+from .DefaultConfigs import RefreshLevel
 
 
 class SolutionConfigs:
@@ -20,16 +23,19 @@ class SolutionConfigs:
 
 class Solution:
     def __init__(
-            self, model: BaseEstimator, data_manager: DataManager, cv_splitter: Optional[BaseCrossValidator] = None,
-            scoring_func: Optional[Callable] = None, working_dir: Optional[str] = None):
+            self, refresh_level: RefreshLevel, data_manager: DataManager,
+            model: BaseEstimator, fit_params: Optional[Dict[str, Any]] = None,
+            cv_splitter: Optional[BaseCrossValidator] = None, scoring_func: Optional[Callable] = None,
+            working_dir: Optional[str] = None):
+        self.refresh_level: RefreshLevel = refresh_level
         self.is_fitted: bool = False
-        self.model: BaseEstimator = model
-        self.fit_params: Optional[Dict] = dict()
+        self.model: Optional[BaseEstimator] = model
+        self.fit_params: Optional[Dict[str, Any]] = fit_params if fit_params is not None else dict()
 
         self.cv_splitter: Optional[BaseCrossValidator] = cv_splitter
-        self.can_eval: bool = False
+        self.has_cv_splitter: bool = False
         if cv_splitter is not None:
-            self.can_eval = True
+            self.has_cv_splitter = True
 
         self.working_dir: str = working_dir if working_dir else "./"
         Path(self.working_dir).mkdir(parents=True, exist_ok=True)
@@ -49,8 +55,35 @@ class Solution:
         self.valid_fnc_all: Optional[pd.DataFrame] = None
         self.valid_fnc_split: Optional[pd.DataFrame] = None
 
+    @property
+    def model_filepath_(self) -> str:
+        return os.path.join(self.working_dir, "model.pkl")
+
+    def save_model(self):
+        if not self.is_fitted:
+            logging.info(f"cannot save model due to not fitted")
+            return self
+
+        logging.info(f"save model to {self.model_filepath_}")
+        joblib.dump(deepcopy(self.model), self.model_filepath_)
+        return self
+
+    def load_model(self):
+        if not (os.path.exists(self.model_filepath_) or os.path.isfile(self.model_filepath_)):
+            return self
+
+        logging.info(f"load pre-fitted model from {self.model_filepath_}")
+        model = joblib.load(self.model_filepath_)
+        if not isinstance(model, type(self.model)):
+            logging.info(f"model mismatched: from file ({type(model)}) != model ({type(self.model)})")
+            return self
+
+        self.is_fitted = True
+        self.model = model
+        return self
+
     def _do_cross_val(self, data_type: Optional[str] = None):
-        if not self.can_eval:
+        if not self.has_cv_splitter:
             return self
 
         if not data_type:
@@ -76,18 +109,19 @@ class Solution:
         self.cross_val_fnc_split.to_parquet(os.path.join(self.working_dir, "cross_val_fnc_split.parquet"))
         return self
 
-    def _do_model_fit(self, data_type: Optional[str] = None, refit: bool = False):
+    def _do_model_fit(self, data_type: Optional[str] = None):
         if not data_type:
             data_type = "training"
 
         # TODO: save / restore model status
-        if self.is_fitted and not refit:
+        if self.is_fitted and self.refresh_level > RefreshLevel("model"):
             return self
 
         train_data = self.data_manager.get_data_helper_by_type(data_type=data_type)
         X, y, groups = train_data.data_
         self.model.fit(X, y, **self.fit_params)  # TODO: add fit_params:
         self.is_fitted = True
+        self.save_model()
         return self
 
     def _do_validation(self, data_type: Optional[str] = None):
@@ -134,11 +168,14 @@ class Solution:
 
     def evaluate(self, train_data_type: str = "training", valid_data_type: str = "validation", ):
         self._do_cross_val(data_type=train_data_type)
+
+        self.load_model()
         self._do_model_fit(data_type=train_data_type)
         self._do_validation(data_type=valid_data_type)
         return self
 
     def run(self, train_data_type: str = "training", infer_data_type: str = "tournament", ):
+        self.load_model()
         self._do_model_fit(data_type=train_data_type)
         self._do_inference(data_type=infer_data_type)
         return self
