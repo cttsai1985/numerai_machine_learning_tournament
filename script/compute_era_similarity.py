@@ -27,18 +27,48 @@ import ds_utils
 
 
 # intra-list average local distance (ILALD)
-def compute_ilald(df: pd.DataFrame) -> float:
+def compute_mean_ilald(df: pd.DataFrame) -> float:
     return df.apply(lambda x: x.drop(x.name).mean() if x.name in x.index else x.mean()).mean()
 
 
+# intra-list average local distance (ILALD)
+def compute_median_ilald(df: pd.DataFrame) -> float:
+    return df.apply(lambda x: x.drop(x.name).mean() if x.name in x.index else x.mean()).median()
+
+
+# intra-list average local distance (ILALD)
+def compute_std_ilald(df: pd.DataFrame) -> float:
+    return df.apply(lambda x: x.drop(x.name).mean() if x.name in x.index else x.mean()).std()
+
+
+# intra-list average local distance (ILALD)
+def compute_skew_ilald(df: pd.DataFrame) -> float:
+    return df.apply(lambda x: x.drop(x.name).mean() if x.name in x.index else x.mean()).skew()
+
+
 # intra-list minimal local distance (ILMLD)
-def compute_ilmld(df: pd.DataFrame) -> float:
+def compute_mean_ilmld(df: pd.DataFrame) -> float:
     return df.apply(lambda x: x.drop(x.name).min() if x.name in x.index else x.min()).mean()
 
 
+# intra-list minimal local distance (ILMLD)
+def compute_std_ilmld(df: pd.DataFrame) -> float:
+    return df.apply(lambda x: x.drop(x.name).min() if x.name in x.index else x.min()).std()
+
+
+# intra-list minimal local distance (ILMLD)
+def compute_median_ilmld(df: pd.DataFrame) -> float:
+    return df.apply(lambda x: x.drop(x.name).min() if x.name in x.index else x.min()).median()
+
+
+# intra-list minimal local distance (ILMLD)
+def compute_skew_ilmld(df: pd.DataFrame) -> float:
+    return df.apply(lambda x: x.drop(x.name).min() if x.name in x.index else x.min()).skew()
+
+
 # intra-list median local distance (ILMeLD)
-def compute_ilmeld(df: pd.DataFrame) -> float:
-    return df.apply(lambda x: x.drop(x.name).median() if x.name in x.index else x.median()).mean()
+def compute_median_ilmeld(df: pd.DataFrame) -> float:
+    return df.apply(lambda x: x.drop(x.name).median() if x.name in x.index else x.median()).median()
 
 
 def compute_distance(x: pd.DataFrame, y: pd.DataFrame, func: Callable) -> pd.DataFrame:
@@ -56,15 +86,15 @@ def compute(
         groupby_col: str = "era", output_filepath: str = "./df.parquet", n_jobs: Optional[int] = None,
         refresh: bool = False):
     df2 = pd.read_parquet(target_filepath).set_index("id")
-    max_era = df2["era"].max()
-    output_filename = output_filepath.format(max_era=max_era)
+    max_era = df2[groupby_col].max()
+    df2 = df2.reindex(columns=columns)
 
+    output_filename = output_filepath.format(max_era=max_era)
     if os.path.exists(output_filename) and not refresh:
         df = pd.read_parquet(output_filename)
         logging.info(f"found and not refresh {output_filename}: {df.shape}\n{df.describe()}")
         return df
 
-    df2 = df2.reindex(columns=columns)
     df1 = dd.read_parquet(
         data_filepath, columns=["id", groupby_col] + df2.columns.tolist(), chuchsize=50000).set_index("id")
     logging.info(f"{max_era} columns ({len(columns)}): data: ({df1.shape[0]}) * target({df2.shape[0]})")
@@ -116,7 +146,13 @@ if "__main__" == __name__:
     distance_types: List[str] = ["cosine", "manhattan", "euclidean"]
     distance_funcs: List[Tuple[str, Callable]] = [(i, partial(pairwise_distances, metric=i)) for i in distance_types]
 
-    _metrics = {"ilald": compute_ilald, "ilmld": compute_ilmld, "ilmeld": compute_ilmeld}
+    _metrics = {
+        "mean_ilald": compute_mean_ilald,  # "std_ilald": compute_std_ilald,
+        "mean_ilmld": compute_mean_ilmld,  # "std_ilmld": compute_std_ilmld,
+        "median_ilald": compute_median_ilald, "median_ilmld": compute_median_ilmld,
+        "skew_ilald": compute_skew_ilald, "skew_ilmld": compute_skew_ilmld,
+        "median_ilmeld": compute_median_ilmeld
+    }
     for seq in product(df1_pairs, df2_pairs, column_pairs, distance_funcs):
         obj = list(zip(*seq))
         names = obj[0]
