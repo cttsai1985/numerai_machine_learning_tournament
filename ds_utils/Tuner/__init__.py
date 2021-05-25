@@ -1,1 +1,2 @@
-from .OptunaLGBM import OptunaLightGBMTunerCV
+from .OptunaLGBMIntegration import OptunaLightGBMTunerCV
+from .OptunaLGBMTuner import OptunaLGBMTuner

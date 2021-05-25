@@ -8,4 +8,5 @@ from .PerformanceTracker import PerformanceTracker
 from .DataManager import DataManager
 from .Solution import Solution
 from .OptimalRounder import OptimalRounder
-from .Tuner import OptunaLightGBMTunerCV
+from .Tuner import OptunaLGBMTuner
+

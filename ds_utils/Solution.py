@@ -3,9 +3,10 @@ import os
 import json
 import re
 import joblib
-from copy import deepcopy
 import logging
 import pandas as pd
+from copy import deepcopy
+from argparse import Namespace
 from pathlib import Path
 from typing import Optional, Callable, Any, Dict, List, Tuple
 from sklearn.model_selection import cross_val_predict
@@ -113,8 +114,7 @@ class Solution:
         if not data_type:
             data_type = "training"
 
-        # TODO: save / restore model status
-        if self.is_fitted and self.refresh_level > RefreshLevel("model"):
+        if self.is_fitted and self.refresh_level <= RefreshLevel("model"):
             return self
 
         train_data = self.data_manager.get_data_helper_by_type(data_type=data_type)
@@ -179,6 +179,12 @@ class Solution:
         self._do_model_fit(data_type=train_data_type)
         self._do_inference(data_type=infer_data_type)
         return self
+
+    @classmethod
+    def from_configs(cls, args: Namespace, configs: SolutionConfigs, output_data_path: str):
+        return cls(
+            args.refresh_level, configs.data_manager_, configs.unfitted_model_, scoring_func=configs.scoring_func,
+            cv_splitter=configs.cv_splitter_, working_dir=output_data_path, )
 
 
 if "__main__" == __name__:
