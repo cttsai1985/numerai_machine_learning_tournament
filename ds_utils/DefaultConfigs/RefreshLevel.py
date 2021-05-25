@@ -6,6 +6,10 @@ _PreExistedLevel: List[Tuple[str, int]] = [
 
 
 class RefreshLevel:
+    @classmethod
+    def possible_refresh_levels(cls):
+        return _PreExistedLevel
+
     def __init__(self, level_name: str = "predictions"):
         self.level_name: str = level_name
         self.level_value: int = -1
