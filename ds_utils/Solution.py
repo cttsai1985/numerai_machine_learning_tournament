@@ -114,7 +114,7 @@ class Solution:
         if not data_type:
             data_type = "training"
 
-        if self.is_fitted and self.refresh_level <= RefreshLevel("model"):
+        if self.is_fitted and self.refresh_level > RefreshLevel("model"):
             return self
 
         train_data = self.data_manager.get_data_helper_by_type(data_type=data_type)

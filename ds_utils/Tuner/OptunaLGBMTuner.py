@@ -55,7 +55,7 @@ class OptunaLGBMTuner:
         if not data_type:
             data_type = "training"
 
-        if self.is_tuned and self.refresh_level <= RefreshLevel("hyper_parameters"):
+        if self.is_tuned and self.refresh_level > RefreshLevel("hyper-parameters"):
             logging.info(f"skip hyper-parameters tuning")
             return self
 
