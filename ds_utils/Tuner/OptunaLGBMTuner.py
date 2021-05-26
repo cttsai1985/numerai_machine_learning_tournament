@@ -18,13 +18,17 @@ class OptunaLGBMTuner:
     def __init__(
             self, refresh_level: RefreshLevel, data_manager: DataManager, cv_splitter: BaseCrossValidator,
             base_params: Dict[str, Any], num_boost_round: int = 2000, early_stopping_rounds: int = 100, seed: int = 42,
+            fobj: Optional[Callable[..., Any]] = None, feval: Optional[Callable[..., Any]] = None,
             working_dir: Optional[str] = None):
         self.refresh_level: RefreshLevel = refresh_level
-
+        self.refresh_level_criterion: RefreshLevel = RefreshLevel("hyper_parameters")
         self.working_dir: str = working_dir if working_dir else "./"
         Path(self.working_dir).mkdir(parents=True, exist_ok=True)
 
         self.is_tuned: bool = False
+
+        self.fobj: Optional[Callable[..., Any]] = fobj
+        self.feval: Optional[Callable[..., Any]] = feval
 
         self.data_manager = data_manager
         self.base_params = base_params
@@ -39,7 +43,7 @@ class OptunaLGBMTuner:
     def _run(self, data_type: str = "training"):
         train_x, train_y, train_group = self.data_manager.get_data_helper_by_type(data_type).data_
         tuner = OptunaLightGBMTunerCV(
-            self.base_params, train_set=lgb.Dataset(train_x, label=train_y),
+            self.base_params, train_set=lgb.Dataset(train_x, label=train_y), fobj=self.fobj, feval=self.feval,
             num_boost_round=self.num_boost_round, early_stopping_rounds=self.early_stopping_rounds,
             verbose_eval=100, folds=self.cv_splitter, seed=self.seed, time_budget=None, study=None,
             model_dir=self.working_dir, )
@@ -55,8 +59,8 @@ class OptunaLGBMTuner:
         if not data_type:
             data_type = "training"
 
-        if self.is_tuned and self.refresh_level > RefreshLevel("hyper-parameters"):
-            logging.info(f"skip hyper-parameters tuning")
+        if self.is_tuned and self.refresh_level > self.refresh_level_criterion:
+            logging.info(f"skip due to refresh level ({self.refresh_level}) higher than {self.refresh_level_criterion}")
             return self
 
         self._run(data_type=data_type)
@@ -99,4 +103,4 @@ class OptunaLGBMTuner:
         return cls(
             refresh_level=args.refresh_level, data_manager=configs.data_manager_, cv_splitter=configs.cv_splitter_,
             base_params=configs.model_base_params, num_boost_round=configs.num_boost_round, early_stopping_rounds=100,
-            seed=configs.model_tuning_seed, working_dir=output_data_path)
+            seed=configs.model_tuning_seed, fobj=configs.fobj, feval=configs.feval, working_dir=output_data_path)

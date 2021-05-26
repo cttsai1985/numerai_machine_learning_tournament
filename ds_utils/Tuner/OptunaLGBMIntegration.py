@@ -18,6 +18,7 @@ _LGBM_PARAMS_KEY = "lightgbm_tuner:lgbm_params"
 _EPS = 1e-12
 # Default value of tree_depth, used for upper bound of num_leaves.
 _DEFAULT_TUNER_TREE_DEPTH: int = 16
+_MIN_TUNER_TREE_DEPTH: int = 4
 
 # Default parameter values described in the official webpage.
 _DEFAULT_LIGHTGBM_PARAMETERS = {
@@ -29,6 +30,14 @@ _DEFAULT_LIGHTGBM_PARAMETERS = {
     "bagging_freq": 1,
     "min_child_samples": 20,
 }
+
+
+def _adaptive_max_num_leaves(tree_depth: int, step: int) -> int:
+    return 2 ** tree_depth - sum([2 ** i for i in range(step)])
+
+
+def _adaptive_min_num_leaves(step: int) -> int:
+    return sum([2 ** i for i in range(step)])
 
 
 class _CustomOptunaObjectiveCV(_OptunaObjectiveCV):
@@ -51,9 +60,13 @@ class _CustomOptunaObjectiveCV(_OptunaObjectiveCV):
             self.lgbm_params["lambda_l2"] = trial.suggest_float("lambda_l2", 1e-6, 10.0, log=True)
 
         if "num_leaves" in self.target_param_names:
-            tree_depth = self.lgbm_params.get("max_depth", _DEFAULT_TUNER_TREE_DEPTH)
-            max_num_leaves = 2 ** tree_depth if tree_depth > 0 else 2 ** _DEFAULT_TUNER_TREE_DEPTH
-            self.lgbm_params["num_leaves"] = int(trial.suggest_loguniform("num_leaves", 7, max_num_leaves))
+            tree_depth = max(
+                _MIN_TUNER_TREE_DEPTH, self.lgbm_params.get("max_depth", _DEFAULT_TUNER_TREE_DEPTH))  # tree_depth >= 4
+            max_num_leaves = max(
+                2 ** _MIN_TUNER_TREE_DEPTH, _adaptive_max_num_leaves(tree_depth, step=min(tree_depth, 4)))
+            min_num_leaves = max(
+                2 ** (_MIN_TUNER_TREE_DEPTH - 1), _adaptive_min_num_leaves(tree_depth - 2 * min(tree_depth, 4)))
+            self.lgbm_params["num_leaves"] = int(trial.suggest_loguniform("num_leaves", min_num_leaves, max_num_leaves))
 
         if "feature_fraction" in self.target_param_names:
             # `GridSampler` is used for sampling feature_fraction value.
