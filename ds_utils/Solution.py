@@ -29,6 +29,8 @@ class Solution:
             cv_splitter: Optional[BaseCrossValidator] = None, scoring_func: Optional[Callable] = None,
             working_dir: Optional[str] = None):
         self.refresh_level: RefreshLevel = refresh_level
+        self.refresh_level_criterion: RefreshLevel = RefreshLevel("model")
+
         self.is_fitted: bool = False
         self.model: Optional[BaseEstimator] = model
         self.fit_params: Optional[Dict[str, Any]] = fit_params if fit_params is not None else dict()
@@ -114,7 +116,8 @@ class Solution:
         if not data_type:
             data_type = "training"
 
-        if self.is_fitted and self.refresh_level > RefreshLevel("model"):
+        if self.is_fitted and self.refresh_level > self.refresh_level_criterion:
+            logging.info(f"skip due to refresh level ({self.refresh_level}) higher than {self.refresh_level_criterion}")
             return self
 
         train_data = self.data_manager.get_data_helper_by_type(data_type=data_type)
