@@ -146,7 +146,7 @@ if "__main__" == __name__:
     dataset_name: str = "latest_tournament_datasets"
     root_data_path: str = os.path.join(root_resource_path, dataset_name)
     # TODO: using configs to load
-    root_prediction_path: str = "../input/numerai_tournament_resource/baseline/lightgbm_optuna/"
+    root_prediction_path: str = "../input/numerai_tournament_resource/baseline/lightgbm_optuna_huber_6f57f220/"
 
     columns_corr = ["Spearman", "Pearson"]
     meta_data_path: str = "../input/numerai_tournament_resource/metadata/"
