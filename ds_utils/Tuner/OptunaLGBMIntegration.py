@@ -22,22 +22,26 @@ _MIN_TUNER_TREE_DEPTH: int = 4
 
 # Default parameter values described in the official webpage.
 _DEFAULT_LIGHTGBM_PARAMETERS = {
-    "lambda_l1": 0.0,
-    "lambda_l2": 0.0,
+    "lambda_l1": 1e-3,
+    "lambda_l2": 1e-6,
     "num_leaves": 31,
     "feature_fraction": .05,
-    "bagging_fraction": .25,
+    "bagging_fraction": .9,
     "bagging_freq": 1,
     "min_child_samples": 20,
 }
 
 
-def _adaptive_max_num_leaves(tree_depth: int, step: int) -> int:
-    return 2 ** tree_depth - sum([2 ** i for i in range(step)])
+def min_num_leave_by_depth(tree_depth: int):
+    return 2 * tree_depth - 1
 
 
-def _adaptive_min_num_leaves(step: int) -> int:
-    return sum([2 ** i for i in range(step)])
+def max_num_leave_by_depth(tree_depth: int):
+    return 2 ** tree_depth - 1
+
+
+def adaptive_func(tree_depth: int):
+    return int(max(0, (tree_depth - 1) / 2, ) ** 2)
 
 
 class _CustomOptunaObjectiveCV(_OptunaObjectiveCV):
@@ -54,23 +58,26 @@ class _CustomOptunaObjectiveCV(_OptunaObjectiveCV):
             self.pbar.set_description(self.pbar_fmt.format(self.step_name, self.best_score))
 
         if "lambda_l1" in self.target_param_names:
-            self.lgbm_params["lambda_l1"] = trial.suggest_float("lambda_l1", 1e-6, 10.0, log=True)
+            self.lgbm_params["lambda_l1"] = np.round(trial.suggest_float("lambda_l1", 1e-3, 100.0, log=True), 3)
 
         if "lambda_l2" in self.target_param_names:
-            self.lgbm_params["lambda_l2"] = trial.suggest_float("lambda_l2", 1e-6, 10.0, log=True)
+            self.lgbm_params["lambda_l2"] = np.round(trial.suggest_float("lambda_l2", 1e-6, 10.0, log=True), 6)
 
         if "num_leaves" in self.target_param_names:
             tree_depth = max(
-                _MIN_TUNER_TREE_DEPTH, self.lgbm_params.get("max_depth", _DEFAULT_TUNER_TREE_DEPTH))  # tree_depth >= 4
-            max_num_leaves = max(
-                2 ** _MIN_TUNER_TREE_DEPTH, _adaptive_max_num_leaves(tree_depth, step=min(tree_depth, 4)))
-            min_num_leaves = max(
-                2 ** (_MIN_TUNER_TREE_DEPTH - 1), _adaptive_min_num_leaves(tree_depth - 2 * min(tree_depth, 4)))
+                _MIN_TUNER_TREE_DEPTH, self.lgbm_params.get("max_depth", _DEFAULT_TUNER_TREE_DEPTH))
+            # min tree_depth >= 4
+            margin = int(np.log(tree_depth ** 2))
+            min_num_leaves = min_num_leave_by_depth(min(_MIN_TUNER_TREE_DEPTH, tree_depth)) + margin
+
+            max_num_leaves = min(
+                max_num_leave_by_depth(min(tree_depth, 7)),
+                sum(map(max_num_leave_by_depth, range(tree_depth - 3, tree_depth))))
+            logging.info(f"num_leaves for max_depth {tree_depth}: in ({min_num_leaves}, {max_num_leaves})")
             self.lgbm_params["num_leaves"] = int(trial.suggest_loguniform("num_leaves", min_num_leaves, max_num_leaves))
 
         if "feature_fraction" in self.target_param_names:
             # `GridSampler` is used for sampling feature_fraction value.
-            # The value 1.0 for the hyperparameter is always sampled.
             param_name = "feature_fraction"
             param = self._param_range[param_name]
             self.lgbm_params[param_name] = np.round(min(
@@ -78,7 +85,6 @@ class _CustomOptunaObjectiveCV(_OptunaObjectiveCV):
 
         if "bagging_fraction" in self.target_param_names:
             # `TPESampler` is used for sampling bagging_fraction value.
-            # The value 1.0 for the hyperparameter might by sampled.
             param_name = "bagging_fraction"
             param = self._param_range[param_name]
             self.lgbm_params[param_name] = min(
@@ -89,7 +95,6 @@ class _CustomOptunaObjectiveCV(_OptunaObjectiveCV):
 
         if "min_child_samples" in self.target_param_names:
             # `GridSampler` is used for sampling min_child_samples value.
-            # The value 1.0 for the hyperparameter is always sampled.
             self.lgbm_params["min_child_samples"] = trial.suggest_int("min_child_samples", 5, 100)
 
 
@@ -130,9 +135,9 @@ class OptunaLightGBMTunerCV(LightGBMTunerCV):
             study=study, optuna_callbacks=optuna_callbacks, verbosity=verbosity, show_progress_bar=show_progress_bar,
             model_dir=model_dir, return_cvbooster=return_cvbooster)
         self._param_range: Dict[str, Dict[str, float]] = {
-            "feature_fraction": {"low": .05, "high": .25, "step": .05},
-            "bagging_fraction": {"low": .5, "high": .95, "step": .01},
-            "min_child_samples": {"discrete": [5, 10, 15, 20, 25, 30, 40, 50, 60, 75, 90, 95, 100]}
+            "feature_fraction": {"low": .05, "high": .2, "step": .05},
+            "bagging_fraction": {"low": .6, "high": .95, "step": .01},
+            "min_child_samples": {"discrete": [10, 15, 20, 25, 30, 35, 40, 45, 50, 60, 80, 100]}
         }
 
     def tune_feature_fraction(self, n_trials: int = 7) -> None:
@@ -143,16 +148,17 @@ class OptunaLightGBMTunerCV(LightGBMTunerCV):
         sampler = optuna.samplers.GridSampler({param_name: param_values})
         self._tune_params([param_name], len(param_values), sampler, "feature_fraction")
 
-    def tune_feature_fraction_stage2(self, n_trials: int = 6) -> None:
-        param_name = "feature_fraction"
+    def tune_feature_fraction_stage2(self, n_trials: int = 21) -> None:
+        param_name: str = "feature_fraction"
         best_feature_fraction = self.best_params[param_name]
         param = self._param_range[param_name]
-        param_values = np.round(np.linspace(best_feature_fraction - .04, best_feature_fraction + .04, 33), 3).tolist()
+        param_values = np.round(
+            np.linspace(best_feature_fraction - .03, best_feature_fraction + .03, n_trials), 3).tolist()
         param_values = list(filter(lambda val: param["high"] >= val >= param["low"], param_values))
         sampler = optuna.samplers.GridSampler({param_name: param_values})
         self._tune_params([param_name], len(param_values), sampler, "feature_fraction_stage2")
 
-    def tune_num_leaves(self, n_trials: int = 20) -> None:
+    def tune_num_leaves(self, n_trials: int = 25) -> None:
         self._tune_params(["num_leaves"], n_trials, optuna.samplers.TPESampler(), "num_leaves")
 
     def tune_bagging(self, n_trials: int = 25) -> None:

@@ -10,13 +10,12 @@ from sklearn.model_selection import BaseCrossValidator
 
 from .OptunaLGBMIntegration import OptunaLightGBMTunerCV
 from ..DefaultConfigs import RefreshLevel
-from ..DataManager import DataManager
-from ..Solution import SolutionConfigs
+from ..SolutionConfigs import SolutionConfigs
 
 
 class OptunaLGBMTuner:
     def __init__(
-            self, refresh_level: RefreshLevel, data_manager: DataManager, cv_splitter: BaseCrossValidator,
+            self, refresh_level: RefreshLevel, data_manager: "DataManager", cv_splitter: BaseCrossValidator,
             base_params: Dict[str, Any], num_boost_round: int = 2000, early_stopping_rounds: int = 100, seed: int = 42,
             fobj: Optional[Callable[..., Any]] = None, feval: Optional[Callable[..., Any]] = None,
             working_dir: Optional[str] = None):
@@ -30,8 +29,8 @@ class OptunaLGBMTuner:
         self.fobj: Optional[Callable[..., Any]] = fobj
         self.feval: Optional[Callable[..., Any]] = feval
 
-        self.data_manager = data_manager
-        self.base_params = base_params
+        self.data_manager: "DataManager" = data_manager
+        self.base_params: Dict[str, Any] = base_params
         self.num_boost_round: int = num_boost_round
         self.early_stopping_rounds: int = early_stopping_rounds
 
