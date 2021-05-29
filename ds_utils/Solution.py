@@ -13,18 +13,12 @@ from sklearn.model_selection import cross_val_predict
 from sklearn.model_selection import BaseCrossValidator
 from sklearn.base import BaseEstimator
 
-from . import DataManager
 from .DefaultConfigs import RefreshLevel
-
-
-class SolutionConfigs:
-    def __init__(self):
-        pass
 
 
 class Solution:
     def __init__(
-            self, refresh_level: RefreshLevel, data_manager: DataManager,
+            self, refresh_level: RefreshLevel, data_manager: "DataManager",
             model: BaseEstimator, fit_params: Optional[Dict[str, Any]] = None,
             cv_splitter: Optional[BaseCrossValidator] = None, scoring_func: Optional[Callable] = None,
             working_dir: Optional[str] = None):
@@ -42,7 +36,7 @@ class Solution:
 
         self.working_dir: str = working_dir if working_dir else "./"
         Path(self.working_dir).mkdir(parents=True, exist_ok=True)
-        self.data_manager: DataManager = data_manager
+        self.data_manager: "DataManager" = data_manager
 
         self.scoring_func: Callable = scoring_func
 
@@ -184,7 +178,7 @@ class Solution:
         return self
 
     @classmethod
-    def from_configs(cls, args: Namespace, configs: SolutionConfigs, output_data_path: str):
+    def from_configs(cls, args: Namespace, configs: "SolutionConfigs", output_data_path: str):
         return cls(
             args.refresh_level, configs.data_manager_, configs.unfitted_model_, scoring_func=configs.scoring_func,
             cv_splitter=configs.cv_splitter_, working_dir=output_data_path, )

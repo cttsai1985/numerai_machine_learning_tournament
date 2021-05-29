@@ -7,7 +7,6 @@ from pathlib import Path
 from typing import Optional, Callable, Any, Dict, List, Tuple
 
 from .Helper import DataHelper
-from .Solution import SolutionConfigs
 
 
 class DataManager:
@@ -33,7 +32,7 @@ class DataManager:
         self.cols_feature: Optional[List[str]] = cols_feature
 
     @classmethod
-    def from_configs(cls, configs: SolutionConfigs, **kwargs):
+    def from_configs(cls, configs: "SolutionConfigs", **kwargs):
         # TODO: implemented and refactor other dependency
         return cls(
             working_dir=configs.input_data_dir, data_mapping=configs.data_mapping, col_target=configs.column_target,

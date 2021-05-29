@@ -4,12 +4,12 @@ import pandas as pd
 from typing import Optional
 from sklearn.model_selection import BaseCrossValidator, PredefinedSplit
 
-from .. import DataManager
-from ..Solution import SolutionConfigs
+from ..DataManager import DataManager
 
 
 class PredefinedSplitHelper:
     """Generate Customized Split for Cross Validation"""
+
     def __init__(
             self, data_manager: DataManager, cv_splitter: BaseCrossValidator, working_dir: Optional[str] = None, ):
         self.data_manager: DataManager = data_manager
@@ -18,7 +18,7 @@ class PredefinedSplitHelper:
         self.cv_splitter_gen: BaseCrossValidator = PredefinedSplit
 
     @classmethod
-    def from_configs(cls, configs: SolutionConfigs) -> "PredefinedSplitHelper":
+    def from_configs(cls, configs: "SolutionConfigs") -> "PredefinedSplitHelper":
         return cls(
             data_manager=configs.data_manager_, cv_splitter=configs.template_cv_splitter_,
             working_dir=configs.input_data_dir)

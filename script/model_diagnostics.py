@@ -15,6 +15,8 @@ EXTERNAL_UTILS_LIB = os.path.join(Path().resolve().parent)
 sys.path.insert(0, EXTERNAL_UTILS_LIB)
 
 import ds_utils
+from ds_utils import SolutionConfigs
+
 from ds_utils.Metrics import corr, payout, spearman_corr, pearson_corr
 
 
@@ -139,18 +141,29 @@ def compute_max_feature_exposure(
     ).mean().compute().rename("max feature exposure")
 
 
+def parse_commandline() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Model Diagnostics", add_help=True,
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    parser.add_argument("--configs", type=str, default="./configs.yaml", help="configs file")
+
+    args = parser.parse_args()
+    return args
+
+
 if "__main__" == __name__:
     ds_utils.initialize_logger()
 
     root_resource_path: str = "../input/numerai_tournament_resource/"
     dataset_name: str = "latest_tournament_datasets"
+    _args = parse_commandline()
+    configs = SolutionConfigs(root_resource_path=root_resource_path, )
+
     root_data_path: str = os.path.join(root_resource_path, dataset_name)
-    # TODO: using configs to load
-    root_prediction_path: str = "../input/numerai_tournament_resource/baseline/lightgbm_optuna_huber_6f57f220/"
+    root_prediction_path: str = configs.output_dir_
 
     columns_corr = ["Spearman", "Pearson"]
-    meta_data_path: str = "../input/numerai_tournament_resource/metadata/"
-    feature_columns_file_path = os.path.join(meta_data_path, "features_numerai.json")
+    feature_columns_file_path = os.path.join(configs.meta_data_dir, "features_numerai.json")
     example_file_path: str = os.path.join(root_data_path, "numerai_example_predictions_data.parquet")
     feature_file_path: str = os.path.join(root_data_path, "numerai_validation_data.parquet")
     score_split_file_path: str = os.path.join(root_prediction_path, "validation_score_split.parquet")
