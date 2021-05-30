@@ -5,7 +5,6 @@ from typing import Optional, Callable, Any, Dict, List, Tuple, Union
 from .Metrics import available_metrics
 
 
-
 class PerformanceTracker:
     def __init__(self, eval_metrics: Optional[List[str]] = None):
         eval_metrics = available_metrics.keys() if not eval_metrics else eval_metrics
