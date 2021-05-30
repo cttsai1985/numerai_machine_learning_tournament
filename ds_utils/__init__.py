@@ -5,6 +5,6 @@ from .DefaultConfigs import RefreshLevel
 from . import Helper
 from .Solution import Solution
 from .SolutionConfigs import SolutionConfigs
-from .OptimalRounder import OptimalRounder
 from .Tuner import OptunaLGBMTuner
 from . import Metrics
+# from .OptimalRounder import OptimalRounder
