@@ -40,6 +40,8 @@ class Solution:
 
         self.scoring_func: Callable = scoring_func
 
+        self.round_digit: int = 3
+
         self.cross_val_predictions: Optional[pd.DataFrame] = None
         self.cross_val_score_all: Optional[pd.DataFrame] = None
         self.cross_val_score_split: Optional[pd.DataFrame] = None
@@ -93,17 +95,30 @@ class Solution:
             pre_dispatch='2*n_jobs', method='predict')
         yhat = pd.Series(yhat, index=y.index, name="yhat")
 
+        eval_type: str = "corss_val"
         ret = cross_val_data.evaluate(yhat=yhat, scoring_func=self.scoring_func)
-
         self.cross_val_predictions, self.cross_val_score_all, self.cross_val_score_split = ret
-        self.cross_val_predictions.to_parquet(os.path.join(self.working_dir, "cross_val_predictions.parquet"))
-        self.cross_val_score_all.to_parquet(os.path.join(self.working_dir, "cross_val_score_all.parquet"))
-        self.cross_val_score_split.to_parquet(os.path.join(self.working_dir, "cross_val_score_split.parquet"))
+        self.cross_val_predictions.to_parquet(os.path.join(self.working_dir, f"{eval_type}_predictions.parquet"))
+        self.cross_val_score_split.to_parquet(os.path.join(self.working_dir, f"{eval_type}_score_split.parquet"))
+        self.cross_val_score_all.to_parquet(os.path.join(self.working_dir, f"{eval_type}_score_all.parquet"))
+
+        ret = cross_val_data.evaluate(yhat=yhat.round(self.round_digit), scoring_func=self.scoring_func)
+        cross_val_predictions, cross_val_score_all, cross_val_score_split = ret
+        cross_val_predictions.to_parquet(
+            os.path.join(self.working_dir, f"{eval_type}_predictions_round{self.round_digit}.parquet"))
+        cross_val_score_split.to_parquet(
+            os.path.join(self.working_dir, f"{eval_type}_score_split_round{self.round_digit}.parquet"))
 
         ret = cross_val_data.evaluate(yhat=yhat, scoring_func=self.scoring_func, feature_neutral=True)
         _, self.cross_val_fnc_all, self.cross_val_fnc_split = ret
-        self.cross_val_fnc_all.to_parquet(os.path.join(self.working_dir, "cross_val_fnc_all.parquet"))
         self.cross_val_fnc_split.to_parquet(os.path.join(self.working_dir, "cross_val_fnc_split.parquet"))
+        self.cross_val_fnc_all.to_parquet(os.path.join(self.working_dir, "cross_val_fnc_all.parquet"))
+        return self
+
+    def _save_prediction(self, eval_type: str = "cross_val"):
+        self.cross_val_predictions.to_parquet(
+            os.path.join(self.working_dir, f"{eval_type}_predictions.parquet"))
+        self.cross_val_score_split.to_parquet(os.path.join(self.working_dir, "cross_val_score_split.parquet"))
         return self
 
     def _do_model_fit(self, data_type: Optional[str] = None):
@@ -136,12 +151,20 @@ class Solution:
         X, y, groups = valid_data.data_
 
         yhat = pd.Series(self.model.predict(X), index=y.index, name="yhat")
-        ret = valid_data.evaluate(yhat=yhat, scoring_func=self.scoring_func)
 
+        eval_type: str = "validation"
+        ret = valid_data.evaluate(yhat=yhat, scoring_func=self.scoring_func)
         self.valid_predictions, self.valid_score_all, self.valid_score_split = ret
-        self.valid_predictions.to_parquet(os.path.join(self.working_dir, "validation_predictions.parquet"))
-        self.valid_score_all.to_parquet(os.path.join(self.working_dir, "validation_score_all.parquet"))
-        self.valid_score_split.to_parquet(os.path.join(self.working_dir, "validation_score_split.parquet"))
+        self.valid_predictions.to_parquet(os.path.join(self.working_dir, f"{eval_type}_predictions.parquet"))
+        self.valid_score_split.to_parquet(os.path.join(self.working_dir, f"{eval_type}_score_split.parquet"))
+        self.valid_score_all.to_parquet(os.path.join(self.working_dir, f"{eval_type}_score_all.parquet"))
+
+        ret = valid_data.evaluate(yhat=yhat.round(self.round_digit), scoring_func=self.scoring_func)
+        self.valid_predictions, self.valid_score_all, self.valid_score_split = ret
+        self.valid_predictions.to_parquet(
+            os.path.join(self.working_dir, f"{eval_type}_predictions_round{self.round_digit}.parquet"))
+        self.valid_score_split.to_parquet(
+            os.path.join(self.working_dir, f"{eval_type}_score_split_round{self.round_digit}.parquet"))
 
         ret = valid_data.evaluate(yhat=yhat, scoring_func=self.scoring_func, feature_neutral=True)
         _, self.valid_fnc_all, self.valid_fnc_split = ret
@@ -161,6 +184,10 @@ class Solution:
         ret = pd.DataFrame({"prediction": self.model.predict(X), "id": y.index}).reindex(columns=["id", "prediction"])
         ret.to_parquet(os.path.join(self.working_dir, f"{data_type}_predictions.parquet"))
         ret.to_csv(os.path.join(self.working_dir, f"{data_type}_predictions.csv"), index=False)
+
+        ret["prediction"] = ret["prediction"].round(self.round_digit)
+        ret.to_parquet(os.path.join(self.working_dir, f"{data_type}_predictions_round{self.round_digit}.parquet"))
+        ret.to_csv(os.path.join(self.working_dir, f"{data_type}_predictions_round{self.round_digit}.csv"), index=False)
         return self
 
     def evaluate(self, train_data_type: str = "training", valid_data_type: str = "validation", ):
