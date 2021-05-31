@@ -3,6 +3,7 @@ import os
 import json
 import logging
 import numpy as np
+import dask.array as da
 import pandas as pd
 from pathlib import Path
 from typing import Optional, Callable, Any, Dict, List, Tuple
@@ -70,7 +71,7 @@ class DataHelper:
 
         # Neutralize submission to features
         f = self.X_.values
-        neutralized_yhat -= f.dot(np.linalg.pinv(f).dot(neutralized_yhat))
+        neutralized_yhat -= da.asarray(f).dot(da.asarray(np.linalg.pinv(f)).dot(neutralized_yhat)).compute()
 
         ret = self.groups_.to_frame()
         ret["yhat"] = neutralized_yhat
