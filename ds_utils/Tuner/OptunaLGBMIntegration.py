@@ -162,6 +162,8 @@ class OptunaLightGBMTunerCV(LightGBMTunerCV):
         self._tune_params(["num_leaves"], n_trials, optuna.samplers.TPESampler(), "num_leaves")
 
     def tune_bagging(self, n_trials: int = 25) -> None:
+        if "goss" in self.lgbm_params.values():
+            return
         self._tune_params(["bagging_fraction", "bagging_freq"], n_trials, optuna.samplers.TPESampler(), "bagging")
 
     def tune_regularization_factors(self, n_trials: int = 25) -> None:
@@ -224,4 +226,10 @@ class OptunaLightGBMTunerCV(LightGBMTunerCV):
             params = copy.deepcopy(_DEFAULT_LIGHTGBM_PARAMETERS)
             # self.lgbm_params may contain parameters given by users.
             params.update(self.lgbm_params)
+            if "goss" in params.values():
+                for k in ["bagging_fraction", "bagging_freq"]:
+                    if k in params.keys():
+                        logging.info(f"remove {k} for safely run GOSS")
+                        del params[k]
+
             return params
