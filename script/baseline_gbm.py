@@ -95,13 +95,15 @@ if "__main__" == __name__:
     ds_utils.initialize_logger()
     _args = parse_commandline()
     main(_args)
-    # TODO: building
-    # TODO: model helper
-    # TODO: parameterize script, half way
-    # TODO: Post processing
+    # TODO: P0
     # TODO: choose subset training set
     # TODO: fine tune model
     # TODO: add select era for model analytics
+
+    # TODO: building
+    # TODO: model helper
+    # TODO: parameterize script, half way
+    # TODO: Post processing, halfway not really working
 
     # TODO: experimenting
     # TODO: multi class approach
