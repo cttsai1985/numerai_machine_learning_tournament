@@ -4,6 +4,7 @@ import json
 import logging
 import numpy as np
 import dask.array as da
+import dask.dataframe as dd
 import pandas as pd
 from pathlib import Path
 from typing import Optional, Callable, Any, Dict, List, Tuple
@@ -62,6 +63,8 @@ class DataHelper:
         if not all([process_funcs, self.is_good, self.is_loaded]):
             return self
 
+        data, y, groups = self.data_
+        self.data = pd.concat([data] + [func(data, y, groups) for func in process_funcs], axis=1)
         # TODO: feature transform
         return self
 

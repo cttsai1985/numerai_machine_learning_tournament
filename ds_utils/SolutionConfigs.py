@@ -9,10 +9,12 @@ import pandas as pd
 from copy import deepcopy
 from argparse import Namespace
 from pathlib import Path
+from functools import partial
 from typing import Optional, Callable, Any, Dict, List, Tuple, Union
 from sklearn.model_selection import BaseCrossValidator
 from sklearn.base import BaseEstimator
 from sklearn.model_selection import StratifiedKFold, PredefinedSplit
+from sklearn.metrics import make_scorer
 from scipy.stats import spearmanr
 from lightgbm import LGBMRegressor
 
@@ -21,9 +23,20 @@ from . import Helper
 from .DataManager import DataManager
 
 
-def spearman_eval_func(preds: np.ndarray, train_data: lightgbm.Dataset) -> Tuple[str, float, bool]:
-    score = spearmanr(train_data.get_label(), pd.Series(preds).rank(pct=True, method="first"))[0]
-    return "neg_spearman_corr", -1. * score, False
+def spearman_corr(y: np.ndarray, y_preds: np.ndarray, **kwargs):
+    return spearmanr(y, pd.Series(y_preds).rank(pct=True, method="first"))[0]
+
+
+def lgbm_spearman_eval_func(preds: np.ndarray, train_data: lightgbm.Dataset) -> Tuple[str, float, bool]:
+    return "neg_spearman_corr", -1. * spearman_corr(train_data.get_label(), preds), False
+
+
+def spearman_eval_scorer(y: np.ndarray, y_pred: np.ndarray, **kwargs):
+    return spearmanr(y, pd.Series(y_pred).rank(pct=True, method="first"))[0]
+
+
+sklearn_spearman_scorer = make_scorer(
+    spearman_eval_scorer, greater_is_better=True, needs_proba=False, needs_threshold=False,)
 
 
 _available_cv_splitter: Dict[str, Callable] = dict([
@@ -38,7 +51,12 @@ _available_objective_func: Dict[str, Callable] = dict([
 ])
 
 _available_evaluation_func: Dict[str, Callable] = dict([
-    ("lightgbm_neg_spearman_corr", spearman_eval_func)
+    ("lightgbm_neg_spearman_corr", lgbm_spearman_eval_func)
+])
+
+
+_available_sklearn_scorer: Dict[str, Callable] = dict([
+    ("sklearn_spearman_scorer", sklearn_spearman_scorer),
 ])
 
 
@@ -80,21 +98,26 @@ class SolutionConfigs:
             "n_jobs": 12
         }
         self.model_best_params: Optional[Dict[str, Any]] = None
+        self.early_stopping_rounds: Optional[int] = None
         self.num_boost_round: int = num_boost_round
 
+        self.scorer_func_query: str = "sklearn_spearman_scorer"
+        self.scorer_func: Optional[Callable[..., Any]] = None
+        self.param_distributions: Optional[Dict[str, Any]] = None
+        self.n_trials: int = 10
         self.model_tuning_seed: int = 42
         self.fobj_gen: Optional[str] = None
         self.fobj: Optional[Callable[..., Any]] = None
         self.feval_gen: Optional[str] = None
         self.feval: Optional[Callable[..., Any]] = None
 
-        self._load_data_configs(configs_file_path)
+        self._load_yaml_configs(configs_file_path)
 
         # initialize
         self.input_data_dir: str = os.path.join(self.root_resource_path, self.dataset_name)
 
         self.scoring_func: Callable = PerformanceTracker().score
-        # self._save_data_configs()
+        # self._save_yaml_configs()
 
     def _load_feature_columns(self, feature_columns_file_path: Optional[str] = None):
         if feature_columns_file_path is None:
@@ -111,7 +134,7 @@ class SolutionConfigs:
         logging.info(f"load using {len(self.columns_feature)} features from {file_path}")
         return self
 
-    def _load_data_configs(self, configs_file_path: str):
+    def _load_yaml_configs(self, configs_file_path: str):
         if not all([os.path.exists(configs_file_path), os.path.isfile(configs_file_path)]):
             logging.info(f"configs does not exist: {configs_file_path}")
             return self
@@ -129,10 +152,10 @@ class SolutionConfigs:
         self.template_cv_splitter_gen = _available_cv_splitter.get(self.template_cv_splitter_gen_query)
         self.fobj = _available_objective_func.get(self.fobj_gen)
         self.feval = _available_evaluation_func.get(self.feval_gen)
-
+        self.scorer_func = _available_sklearn_scorer.get(self.scorer_func_query)
         return self
 
-    def _save_data_configs(self, output_data_dir: Optional[str] = None):
+    def _save_yaml_configs(self, output_data_dir: Optional[str] = None):
         dict_file = {
             "dataset_name": self.dataset_name,
             "data_mapping": self.data_mapping,
@@ -144,10 +167,13 @@ class SolutionConfigs:
             "model_best_params": self.model_best_params,
             "model_tuning_seed": self.model_tuning_seed,
             "num_boost_round": self.num_boost_round,
+            "early_stopping_rounds": self.early_stopping_rounds,
             "template_cv_splitter_gen_query": self.template_cv_splitter_gen_query,
             "template_cv_splitter_params": self.template_cv_splitter_params,
             "feval_gen": self.feval_gen,
             "fobj_gen": self.fobj_gen,
+            "scorer_func_query": self.scorer_func_query,
+            "n_trials": self.n_trials
         }
 
         if output_data_dir is None:
