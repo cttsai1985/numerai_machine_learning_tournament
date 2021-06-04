@@ -17,6 +17,24 @@ from ds_utils import Solution, SolutionConfigs, OptunaLGBMTuner
 from ds_utils import RefreshLevel
 
 
+def mkdir_safe(dir_path: str, desired_permission=0o755):
+    try:
+        original_umask = os.umask(0)
+        Path(dir_path).mkdir(mode=desired_permission, parents=True, exist_ok=True)
+    finally:
+        os.umask(original_umask)
+
+
+def chmod_safe(dir_path: str, desired_permission=0o766):
+    try:
+        original_umask = os.umask(0)
+        tmp = list(glob(os.path.join(dir_path, "*")))
+        logging.info(f"chmod to {tmp}")
+        map(lambda x: os.chmod(x, mode=desired_permission), tmp)
+    finally:
+        os.umask(original_umask)
+
+
 def parse_commandline() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Solver", add_help=True,
@@ -49,10 +67,11 @@ def parse_commandline() -> argparse.Namespace:
 def main(args: argparse.Namespace):
     root_resource_path: str = "../input/numerai_tournament_resource/"
 
-    configs = SolutionConfigs(root_resource_path=root_resource_path, eval_data_type=args.eval_data_type,)
+    configs = SolutionConfigs(
+        root_resource_path=root_resource_path, configs_file_path=args.configs, eval_data_type=args.eval_data_type, )
 
     output_data_path: str = configs.output_dir_
-    Path(output_data_path).mkdir(mode=0o777, parents=True, exist_ok=True)
+    Path(output_data_path).mkdir(parents=True, exist_ok=True)
     if args.debug:
         configs.num_boost_round = 5
 
