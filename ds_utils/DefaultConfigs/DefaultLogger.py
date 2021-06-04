@@ -1,7 +1,6 @@
 import logging
 import sys
 
-
 formatted_string = "%(asctime)s [%(levelname)-8s] [%(filename)s:%(lineno)d] %(message)s"
 formatter = logging.Formatter(formatted_string)
 basic_configs = {
@@ -22,6 +21,16 @@ def initialize_logger():
         stream_handler.setFormatter(formatter)
         logger.addHandler(stream_handler)
 
+    return logger
+
+
+def add_file_logger(log_filename: str):
+    file_handler = logging.FileHandler(log_filename)
+    file_handler.setLevel(logging.DEBUG)
+    file_handler.setFormatter(formatter)
+
+    logger = logging.getLogger(__name__)
+    logger.addHandler(file_handler)
     return logger
 
 

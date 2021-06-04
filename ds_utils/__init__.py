@@ -1,5 +1,5 @@
 from .DefaultConfigs import configure_pandas_display
-from .DefaultConfigs import initialize_logger
+from .DefaultConfigs import initialize_logger, add_file_logger
 from .DefaultConfigs import RefreshLevel
 
 from . import Helper
