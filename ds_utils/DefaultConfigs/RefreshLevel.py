@@ -2,7 +2,7 @@ import logging
 from typing import List, Tuple
 
 _PreExistedLevel: List[Tuple[str, int]] = [
-    ("data", 0), ("hyper_parameters", 1), ("model", 2), ("predictions", 3)]
+    ("data", 0), ("hyper_parameters", 1), ("model", 2), ("model_refit", 3), ("predictions", 4)]
 
 
 class RefreshLevel:
