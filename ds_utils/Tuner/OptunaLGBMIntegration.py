@@ -31,6 +31,17 @@ _DEFAULT_LIGHTGBM_PARAMETERS = {
     "min_child_samples": 20,
 }
 
+_SUPPORTED_PARAM_NAMES = [
+    "learning_rate",
+    "lambda_l1",
+    "lambda_l2",
+    "num_leaves",
+    "feature_fraction",
+    "bagging_fraction",
+    "bagging_freq",
+    "min_child_samples",
+]
+
 
 def min_num_leave_by_depth(tree_depth: int):
     return 2 * tree_depth - 1
@@ -53,15 +64,14 @@ class _CustomOptunaObjectiveCV(_OptunaObjectiveCV):
             target_param_names, lgbm_params, train_set, lgbm_kwargs, best_score, step_name, model_dir, pbar=pbar, )
         self._param_range: Dict[str, Dict[str, float]] = param_range
 
+    def _check_target_names_supported(self) -> None:
+        for target_param_name in self.target_param_names:
+            if target_param_name not in _SUPPORTED_PARAM_NAMES:
+                raise NotImplementedError("Parameter `{}` is not supported for tuning.")
+
     def _preprocess(self, trial: optuna.trial.Trial) -> None:
         if self.pbar is not None:
             self.pbar.set_description(self.pbar_fmt.format(self.step_name, self.best_score))
-
-        if "lambda_l1" in self.target_param_names:
-            self.lgbm_params["lambda_l1"] = np.round(trial.suggest_float("lambda_l1", 1e-3, 100.0, log=True), 3)
-
-        if "lambda_l2" in self.target_param_names:
-            self.lgbm_params["lambda_l2"] = np.round(trial.suggest_float("lambda_l2", 1e-6, 10.0, log=True), 6)
 
         if "num_leaves" in self.target_param_names:
             tree_depth = max(
@@ -69,33 +79,47 @@ class _CustomOptunaObjectiveCV(_OptunaObjectiveCV):
             # min tree_depth >= 4
             margin = int(np.log(tree_depth ** 2))
             min_num_leaves = min_num_leave_by_depth(min(_MIN_TUNER_TREE_DEPTH, tree_depth)) + margin
-
             max_num_leaves = min(
                 max_num_leave_by_depth(min(tree_depth, 7)),
                 sum(map(max_num_leave_by_depth, range(tree_depth - 3, tree_depth))))
             logging.info(f"num_leaves for max_depth {tree_depth}: in ({min_num_leaves}, {max_num_leaves})")
             self.lgbm_params["num_leaves"] = int(trial.suggest_loguniform("num_leaves", min_num_leaves, max_num_leaves))
 
-        if "feature_fraction" in self.target_param_names:
-            # `GridSampler` is used for sampling feature_fraction value.
-            param_name = "feature_fraction"
-            param = self._param_range[param_name]
-            self.lgbm_params[param_name] = np.round(min(
-                trial.suggest_float(param_name, param["low"], param["high"] + _EPS), param["high"]), 3)
+        self._suggest_float("lambda_l1", trial, round_digits=3)
+        self._suggest_float("lambda_l2", trial, round_digits=6)
+        # `GridSampler` is used for sampling feature_fraction value.
+        self._suggest_float("feature_fraction", trial, round_digits=3)
+        # `TPESampler` is used for sampling bagging_fraction value.
+        self._suggest_float("bagging_fraction", trial, round_digits=None)
+        # `GridSampler` is used for sampling bagging_freq value.
+        self._suggest_categorical("bagging_freq", trial)
+        # `GridSampler` is used for sampling min_child_samples value.
+        self._suggest_categorical("min_child_samples", trial)
+        # `GridSampler` is used for sampling learning_rate value.
+        self._suggest_categorical("learning_rate", trial)
 
-        if "bagging_fraction" in self.target_param_names:
-            # `TPESampler` is used for sampling bagging_fraction value.
-            param_name = "bagging_fraction"
-            param = self._param_range[param_name]
-            self.lgbm_params[param_name] = min(
-                trial.suggest_float(param_name, param["low"], param["high"] + _EPS), param["high"])
+    def _suggest_float(
+            self, param_name: str, trial: optuna.trial.Trial, round_digits: Optional[float] = None) -> None:
+        if param_name not in self.target_param_names:
+            return
 
-        if "bagging_freq" in self.target_param_names:
-            self.lgbm_params["bagging_freq"] = trial.suggest_int("bagging_freq", 1, 7)
+        param = self._param_range[param_name]
+        suggestion = min(
+            trial.suggest_float(param_name, param["low"], param["high"] + _EPS, log=param.get("log", False)),
+            param["high"])
+        if round_digits:
+            suggestion = np.round(suggestion, round_digits)
 
-        if "min_child_samples" in self.target_param_names:
-            # `GridSampler` is used for sampling min_child_samples value.
-            self.lgbm_params["min_child_samples"] = trial.suggest_int("min_child_samples", 5, 100)
+        self.lgbm_params[param_name] = suggestion
+        return
+
+    def _suggest_categorical(self, param_name: str, trial: optuna.trial.Trial) -> None:
+        if param_name not in self.target_param_names:
+            return
+
+        param = self._param_range[param_name]
+        self.lgbm_params[param_name] = trial.suggest_categorical(param_name, param["discrete"])
+        return
 
 
 class OptunaLightGBMTunerCV(LightGBMTunerCV):
@@ -137,7 +161,11 @@ class OptunaLightGBMTunerCV(LightGBMTunerCV):
         self._param_range: Dict[str, Dict[str, float]] = {
             "feature_fraction": {"low": .05, "high": .2, "step": .05},
             "bagging_fraction": {"low": .6, "high": .95, "step": .01},
-            "min_child_samples": {"discrete": [10, 15, 20, 25, 30, 35, 40, 45, 50, 60, 80, 100]}
+            "min_child_samples": {"discrete": [10, 15, 20, 25, 30, 35, 40, 45, 50, 60, 80, 100]},
+            "learning_rate": {"discrete": [.002, .005, .01, .02, .05, .1]},
+            "bagging_freq": {"discrete": [1, 2, 3, 4, 5, 6, 7]},
+            "lambda_l1": {"low": 1e-3, "high": 100., "log": True},
+            "lambda_l2": {"low": 1e-6, "high": 10., "log": True},
         }
 
     def tune_feature_fraction(self, n_trials: int = 7) -> None:
@@ -164,6 +192,7 @@ class OptunaLightGBMTunerCV(LightGBMTunerCV):
     def tune_bagging(self, n_trials: int = 25) -> None:
         if "goss" in self.lgbm_params.values():
             return
+
         self._tune_params(["bagging_fraction", "bagging_freq"], n_trials, optuna.samplers.TPESampler(), "bagging")
 
     def tune_regularization_factors(self, n_trials: int = 25) -> None:
@@ -176,6 +205,16 @@ class OptunaLightGBMTunerCV(LightGBMTunerCV):
         param_values = param["discrete"]
         sampler = optuna.samplers.GridSampler({param_name: param_values})
         self._tune_params([param_name], len(param_values), sampler, "min_data_in_leaf")
+
+    def tune_learning_rate(self) -> None:  # TODO: find edge case
+        if "rf" in self.lgbm_params.values():
+            return
+
+        param_name = "learning_rate"
+        param = self._param_range[param_name]
+        param_values = param["discrete"]
+        sampler = optuna.samplers.GridSampler({param_name: param_values})
+        self._tune_params([param_name], len(param_values), sampler, "learning_rate")
 
     def _create_objective(
             self, target_param_names: List[str], train_set: "lgb.Dataset", step_name: str,
@@ -203,6 +242,8 @@ class OptunaLightGBMTunerCV(LightGBMTunerCV):
         # Sampling.
         self.sample_train_set()
 
+        self.tune_learning_rate()
+        logging.info(f"current best after tune_learning_rate: {self.best_params}")
         self.tune_feature_fraction()
         logging.info(f"current best after tune_feature_fraction: {self.best_params}")
         self.tune_num_leaves()
@@ -216,20 +257,30 @@ class OptunaLightGBMTunerCV(LightGBMTunerCV):
         self.tune_min_data_in_leaf()
         logging.info(f"current best after tune_min_data_in_leaf: {self.best_params}")
 
+    @staticmethod
+    def _drop_ineffective_params(params: Dict[str, Any], param_value: Any, params_to_drop: List[str]) -> Dict[str, Any]:
+        if param_value not in params.values():
+            return params
+
+        for k in params_to_drop:
+            if k in params.keys():
+                logging.info(f"remove {k} for safely run {param_value}")
+                del params[k]
+
+        return params
+
     @property
     def best_params(self) -> Dict[str, Any]:
         """Return parameters of the best booster."""
         try:
             return json.loads(self.study.best_trial.system_attrs[_LGBM_PARAMS_KEY])
-        except ValueError:
+
+        except ValueError:  # TODO: parameterize this
             # Return the default score because no trials have completed.
             params = copy.deepcopy(_DEFAULT_LIGHTGBM_PARAMETERS)
             # self.lgbm_params may contain parameters given by users.
             params.update(self.lgbm_params)
-            if "goss" in params.values():
-                for k in ["bagging_fraction", "bagging_freq"]:
-                    if k in params.keys():
-                        logging.info(f"remove {k} for safely run GOSS")
-                        del params[k]
-
+            params = self._drop_ineffective_params(
+                params, "goss", params_to_drop=["bagging_fraction", "bagging_freq"], )
+            params = self._drop_ineffective_params(params, "rf", params_to_drop=["learning_rate"], )
             return params
