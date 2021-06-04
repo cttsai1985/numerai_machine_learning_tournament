@@ -29,7 +29,7 @@ _MetricsFuncMapping = {
 }
 
 
-def compute(data: pd.Series, func: str, num: int = 5) -> pd.Series:
+def compute(data: pd.Series, func: str, num: int = 3) -> pd.Series:
     return getattr(data, func)(num)
 
 
@@ -47,4 +47,3 @@ if "__main__" == __name__:
     ret["target"] = list(map(lambda x: _MetricsFuncMapping.get(x), ret.index.tolist()))
     ret = ret.groupby(col_metric).apply(lambda x: x.reset_index()).reindex(columns=["target", "score", "path"])
     logging.info(f"best models:\n{ret.loc[list(_MetricsFuncMapping.keys())]}")
-    import pdb; pdb.set_trace()
