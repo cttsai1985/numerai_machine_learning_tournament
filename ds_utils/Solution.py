@@ -122,6 +122,7 @@ class Solution:
             logging.info(f"skip due to refresh level ({self.refresh_level}) higher than {self.refresh_level_criterion}")
             return self
 
+        logging.info(f"training model...")
         train_data = self.data_manager.get_data_helper_by_type(data_type=data_type)
         X, y, groups = train_data.data_
         self.model.fit(X, y, **self.fit_params)  # TODO: add fit_params:
