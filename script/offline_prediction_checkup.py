@@ -13,16 +13,6 @@ import ds_utils
 from ds_utils import SolutionConfigs
 
 
-def parse_commandline() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(
-        description="Model Diagnostics", add_help=True,
-        formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    parser.add_argument("--configs", type=str, default="./configs.yaml", help="configs file")
-
-    args = parser.parse_args()
-    return args
-
-
 def compute(root_data_path: str, root_prediction_path: str) -> pd.DataFrame:
     data_file_path: str = os.path.join(root_data_path, "numerai_tournament_data.parquet")
     prediction_file_path: str = os.path.join(root_prediction_path, "tournament_predictions.parquet")
@@ -43,6 +33,16 @@ def compute(root_data_path: str, root_prediction_path: str) -> pd.DataFrame:
     summary.to_csv(output_file_path.format(filename_extension="csv"), )
     summary.to_parquet(output_file_path.format(filename_extension="parquet"), )
     return summary
+
+
+def parse_commandline() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Model Diagnostics", add_help=True,
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    parser.add_argument("--configs", type=str, default="./configs.yaml", help="configs file")
+
+    args = parser.parse_args()
+    return args
 
 
 if "__main__" == __name__:
