@@ -92,11 +92,12 @@ class DataHelper:
             yhat = self.feature_neutralize(yhat)
             scoring_type = "corr"
 
-        predictions = pd.concat([self.y_, yhat.rename(col_yhat), self.groups_], axis=1)
-        score_split = predictions.groupby(self.group_name_).apply(
+        # TODO: cv with era, cannot with target
+        predictions = pd.concat([self.y_, yhat.rename(col_yhat), self.groups_for_eval_], axis=1)
+        score_split = predictions.groupby(self.group_name_for_eval_).apply(
             lambda x: scoring_func(x[self.y_.name], x[col_yhat], scoring_type=scoring_type))
         score_all = scoring_func(
-            self.y_, predictions[col_yhat], scoring_type=scoring_type).to_frame(self.group_name_)
+            self.y_, predictions[col_yhat], scoring_type=scoring_type).to_frame(self.group_name_for_eval_)
         score_all["sharpe"] = score_split.mean() / score_split.std()
         score_all = score_all.T
         logging.info(f"Performance:\n{score_all}\n\n{score_split}\n\n{score_split.describe()}")
@@ -130,6 +131,14 @@ class DataHelper:
 
         return self.data.reindex(
             columns=self.cols_group).apply(lambda x: "_".join(x.astype("str")), axis=1).rename(self.group_name_)
+
+    @property
+    def groups_for_eval_(self) -> pd.Series:
+        return self.data.reindex(columns=["era"]).squeeze()
+
+    @property
+    def group_name_for_eval_(self) -> str:
+        return "_".join(["era"])
 
     @property
     def y_(self) -> pd.Series:

@@ -15,6 +15,7 @@ class DataManager:
             cols_group: Optional[List[str]] = None, cols_feature: Optional[List[str]] = None):
         self.working_dir: str = working_dir if working_dir else "./"
 
+        # TODO: remove dependency and move to yaml configs
         self.data_file_types: List[str] = ["training", "validation", "test", "live", "tournament"]
         self.data_file_names: List[str] = [
             "numerai_training_data.parquet", "numerai_validation_data.parquet", "numerai_test_data.parquet",
