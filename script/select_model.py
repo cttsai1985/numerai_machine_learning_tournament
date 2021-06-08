@@ -29,14 +29,14 @@ _MetricsFuncMapping = {
 }
 
 
-def compute(data: pd.Series, func: str, num: int = 3) -> pd.Series:
+def compute(data: pd.Series, func: str, num: int = 5) -> pd.Series:
     return getattr(data, func)(num)
 
 
 if "__main__" == __name__:
     ds_utils.initialize_logger()
 
-    col_metric: str = "Unnamed: 0"
+    col_metric: str = "attr"
     root_resource_path: str = "../input/numerai_tournament_resource/"
     helper = NumerAPIHelper(root_dir_path=root_resource_path, )
     df = dd.read_csv(os.path.join(helper.result_dir_current_round_, "*.csv"), include_path_column=True).compute()
