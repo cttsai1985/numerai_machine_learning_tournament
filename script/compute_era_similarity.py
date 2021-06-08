@@ -19,7 +19,6 @@ from dask.distributed import Client
 from dask_cuda import LocalCUDACluster
 from cuml.metrics.pairwise_distances import pairwise_distances
 
-# EXTERNAL_UTILS_LIB = os.path.join(Path().resolve().parent, "numerai_utils")
 EXTERNAL_UTILS_LIB = os.path.join(Path().resolve().parent)
 sys.path.insert(0, EXTERNAL_UTILS_LIB)
 

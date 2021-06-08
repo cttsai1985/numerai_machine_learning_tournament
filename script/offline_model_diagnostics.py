@@ -11,7 +11,6 @@ from pathlib import Path
 from glob import glob
 from typing import Optional, Callable, Any, Dict, List, Tuple, Union
 
-# EXTERNAL_UTILS_LIB = os.path.join(Path().resolve().parent, "numerai_utils")
 EXTERNAL_UTILS_LIB = os.path.join(Path().resolve().parent)
 sys.path.insert(0, EXTERNAL_UTILS_LIB)
 

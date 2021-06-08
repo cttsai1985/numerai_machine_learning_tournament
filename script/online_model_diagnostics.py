@@ -6,7 +6,6 @@ import logging
 from pathlib import Path
 from numerapi import NumerAPI
 
-# EXTERNAL_UTILS_LIB = os.path.join(Path().resolve().parent, "numerai_utils")
 EXTERNAL_UTILS_LIB = os.path.join(Path().resolve().parent)
 sys.path.insert(0, EXTERNAL_UTILS_LIB)
 

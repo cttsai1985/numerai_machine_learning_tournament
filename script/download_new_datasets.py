@@ -4,7 +4,6 @@ from pathlib import Path
 import argparse
 from typing import Optional, List
 
-# EXTERNAL_UTILS_LIB = os.path.join(Path().resolve().parent, "numerai_utils")
 EXTERNAL_UTILS_LIB = os.path.join(Path().resolve().parent)
 sys.path.insert(0, EXTERNAL_UTILS_LIB)
 
