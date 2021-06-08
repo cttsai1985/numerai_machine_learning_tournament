@@ -103,7 +103,7 @@ class NumerAPIHelper:
         for data_type in valid_data_types:
             filename = f"numerai_{data_type}_data.{extension}"
             self.api.download_latest_data(
-                data_type=data_type, extension="parquet", dest_path=self.data_dir_path, dest_filename=filename)
+                data_type=data_type, extension=extension, dest_path=self.data_dir_path, dest_filename=filename)
             logging.info(f"\n{filename} download finished.")
 
         logging.info(f"\nall requested datasets updated: " + ",".join(valid_data_types))

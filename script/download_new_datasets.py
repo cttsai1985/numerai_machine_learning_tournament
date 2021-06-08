@@ -15,6 +15,7 @@ def parse_parameters():
     parser = argparse.ArgumentParser()
     parser.add_argument("--refresh", action="store_true", help="refresh dataset")
     parser.add_argument("--update-only", action="store_true", help="download all datasets.")
+    parser.add_argument("--extension", default="parquet", help="set extension")
     args = parser.parse_args()
     return args
 
@@ -28,4 +29,4 @@ if "__main__" == __name__:
     if not _args.update_only:
         valid_data_types = None
 
-    helper.download_latest_dataset(valid_data_types=valid_data_types, refresh=_args.refresh)
+    helper.download_latest_dataset(extension=_args.extension, valid_data_types=valid_data_types, refresh=_args.refresh)
