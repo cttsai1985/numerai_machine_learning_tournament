@@ -29,12 +29,24 @@ _MetricsFuncMapping = {
 }
 
 
-def compute(data: pd.Series, func: str, num: int = 5) -> pd.Series:
+def compute(data: pd.Series, func: str, num: int = 10) -> pd.Series:
     return getattr(data, func)(num)
+
+
+def parse_commandline() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="execute a series of scripts", add_help=True,
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    parser.add_argument("--num-rows", type=int, default=5, help="display rows per attributes")
+    args = parser.parse_args()
+    return args
 
 
 if "__main__" == __name__:
     ds_utils.initialize_logger()
+    ds_utils.configure_pandas_display()
+
+    _args = parse_commandline()
 
     col_metric: str = "attr"
     root_resource_path: str = "../input/numerai_tournament_resource/"
@@ -42,8 +54,11 @@ if "__main__" == __name__:
     df = dd.read_csv(os.path.join(helper.result_dir_current_round_, "*.csv"), include_path_column=True).compute()
     df["path"] = df["path"].apply(lambda x: Path(x).stem)
     ret = df.set_index(["path", ]).groupby(
-        col_metric).apply(lambda x: compute(x["score"], _MetricsFuncMapping.get(x.name)))
+        col_metric).apply(lambda x: compute(x["score"], _MetricsFuncMapping.get(x.name), num=_args.num_rows))
     ret = ret.reset_index("path")
     ret["target"] = list(map(lambda x: _MetricsFuncMapping.get(x), ret.index.tolist()))
     ret = ret.groupby(col_metric).apply(lambda x: x.reset_index()).reindex(columns=["target", "score", "path"])
-    logging.info(f"best models:\n{ret.loc[list(_MetricsFuncMapping.keys())]}")
+    ret = ret.loc[list(_MetricsFuncMapping.keys())]
+    logging.info(f"best models:\n{ret}")
+    with open(os.path.join(helper.result_dir_current_round_, "summary.txt"), "w") as f:
+        f.write(ret.to_string())

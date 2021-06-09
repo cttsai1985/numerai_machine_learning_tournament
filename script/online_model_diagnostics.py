@@ -22,6 +22,7 @@ def parse_commandline() -> argparse.Namespace:
     parser.add_argument("--numerapiPublicID", type=str, default="", help="numerapi public ID")
     parser.add_argument("--numerapiSecret", type=str, default="", help="numerapi secret")
     parser.add_argument("--model-name", type=str, default="cttsai", help="")
+    parser.add_argument("--refresh", action="store_true", help="force upload predictions")
     args = parser.parse_args()
     return args
 
@@ -38,4 +39,4 @@ if "__main__" == __name__:
     helper = NumerAPIHelper(
         root_dir_path=root_resource_path,
         api=NumerAPI(secret_key=_args.numerapiSecret, public_id=_args.numerapiPublicID))
-    helper.evaluate_online_predictions(model_name=_args.model_name, dir_path=configs.output_dir_)
+    helper.evaluate_online_predictions(model_name=_args.model_name, dir_path=configs.output_dir_, refresh=_args.refresh)

@@ -18,22 +18,36 @@ import ds_utils
 def live_output(process):
     # Poll process.stdout to show stdout live
     while True:
-        output = process.stdout.readline()
-        if not process.poll():
-            break
+        # noinspection PyBroadException
+        try:
+            output = process.stdout.readline()
+            if not process.poll():
+                break
 
-        if output:
-            print(output.strip())
-            sys.stdout.flush()
+            if output:
+                print(output.strip())
+                sys.stdout.flush()
+
+        except Exception:
+            logging.info(f'failed capture output')
+            break
 
     return process.poll()
 
 
 def execute_on_process(command: List[str]):
     logging.info(f'run command: {" ".join(command)}')
-    process = subprocess.Popen(" ".join(command), shell=True, stdout=subprocess.PIPE, )
-    live_output(process)
-    time.sleep(1)
+
+    # noinspection PyBroadException
+    try:
+        process = subprocess.Popen(" ".join(command), shell=True, stdout=subprocess.PIPE, )
+        live_output(process)
+        process.wait()
+        time.sleep(1)
+
+    except Exception:
+        logging.info(f'failed running command: {" ".join(command)}')
+
     return
 
 
