@@ -42,6 +42,11 @@ _SUPPORTED_PARAM_NAMES = [
     "min_child_samples",
 ]
 
+_PARAMS_TO_CHECK: List[Tuple[str, List[str]]] = [
+    ("goss", ["bagging_fraction", "bagging_freq"]),
+    ("rf", ["learning_rate"])
+]
+
 
 def min_num_leave_by_depth(tree_depth: int):
     return 2 * tree_depth - 1
@@ -221,10 +226,10 @@ class OptunaLightGBMTunerCV(LightGBMTunerCV):
             pbar: Optional[tqdm.tqdm], ) -> _OptunaObjective:
         return _CustomOptunaObjectiveCV(
             target_param_names, self._param_range, self.lgbm_params, train_set, self.lgbm_kwargs, self.best_score,
-            step_name=step_name, model_dir=self._model_dir, pbar=pbar, )
+            step_name=step_name, model_dir=self._model_dir, pbar=None, )
 
     def run(self) -> None:
-        """Perform the hyperparameter-tuning with given parameters."""
+        """Perform the hyper-parameters-tuning with given parameters."""
         verbosity = self.auto_options["verbosity"]
         if verbosity is not None:
             if verbosity > 1:
@@ -280,7 +285,6 @@ class OptunaLightGBMTunerCV(LightGBMTunerCV):
             params = copy.deepcopy(_DEFAULT_LIGHTGBM_PARAMETERS)
             # self.lgbm_params may contain parameters given by users.
             params.update(self.lgbm_params)
-            params = self._drop_ineffective_params(
-                params, "goss", params_to_drop=["bagging_fraction", "bagging_freq"], )
-            params = self._drop_ineffective_params(params, "rf", params_to_drop=["learning_rate"], )
+            for params_to_check, v in _PARAMS_TO_CHECK:
+                params = self._drop_ineffective_params(params, params_to_check, params_to_drop=v)
             return params
