@@ -99,26 +99,43 @@ class NumerAPIHelper:
         if not valid_data_types:
             valid_data_types = self.valid_data_types
 
+        _template = "numerai_{data_type}_data.{extension}"
         Path(self.data_dir_path).mkdir(parents=True, exist_ok=True)
         for data_type in valid_data_types:
-            filename = f"numerai_{data_type}_data.{extension}"
+            filename = _template.format(data_type=data_type, extension=extension)
+
+            _filepath: str = os.path.join(self.data_dir_path, filename)
+            if os.path.exists(_filepath) and refresh:
+                os.remove(_filepath)
+
             self.api.download_latest_data(
                 data_type=data_type, extension=extension, dest_path=self.data_dir_path, dest_filename=filename)
             logging.info(f"\n{filename} download finished.")
+            if "csv" == extension:
+                pd.read_csv(
+                    os.path.join(self.data_dir_path, filename)).to_parquet(
+                    _template.format(data_type=data_type, extension="parquet"))
 
         logging.info(f"\nall requested datasets updated: " + ",".join(valid_data_types))
         self.update_round_identifier_to_current()
         return self
 
-    def evaluate_online_predictions(self, model_name: Optional[str] = None, dir_path: Optional[str] = None):
+    def evaluate_online_predictions(
+            self, model_name: Optional[str] = None, dir_path: Optional[str] = None, refresh: bool = False):
         if not dir_path:
             dir_path = self.root_dir_path
 
         model_id = self.api.get_models()[model_name]
         logging.info(f"model: {model_name} ({model_id})")
+        result_filepath = os.path.join(self.result_dir_current_round_, Path(dir_path).name + ".csv")
+        if os.path.exists(result_filepath) and not refresh:
+            logging.info(f"skip upload since result {result_filepath} exists and not refresh")
+            return True
+
         self.api.upload_predictions(os.path.join(dir_path, "tournament_predictions.csv"), model_id=model_id)
 
         for i in range(10):
+            # noinspection PyBroadException
             try:
                 time.sleep(5)
                 series = pd.Series(self.api.submission_status(model_id))
@@ -141,7 +158,6 @@ class NumerAPIHelper:
         df.to_csv(os.path.join(dir_path, "online_model_diagnostics.csv"), )
 
         Path(self.result_dir_current_round_).mkdir(parents=True, exist_ok=True)
-        result_filepath = os.path.join(self.result_dir_current_round_, Path(dir_path).name + ".csv")
         df.to_csv(result_filepath)
         logging.info(f"write online diagnostics to {result_filepath}")
         return self
