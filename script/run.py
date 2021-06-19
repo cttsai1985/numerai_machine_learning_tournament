@@ -125,5 +125,6 @@ def parse_commandline() -> argparse.Namespace:
 
 if "__main__" == __name__:
     ds_utils.initialize_logger()
+    ds_utils.configure_pandas_display()
     _args = parse_commandline()
     main(_args)

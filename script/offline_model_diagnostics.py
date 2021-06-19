@@ -234,6 +234,7 @@ def compute(
 
 if "__main__" == __name__:
     ds_utils.initialize_logger()
+    ds_utils.configure_pandas_display()
 
     root_resource_path: str = "../input/numerai_tournament_resource/"
     dataset_name: str = "latest_tournament_datasets"
@@ -251,8 +252,8 @@ if "__main__" == __name__:
         columns_corr=_columns_corr)
 
     diff_summary = (validation_summary - cross_val_summary).dropna().reindex(index=cross_val_summary.index)
-    output_file_path: str = os.path.join(
+    _output_file_path: str = os.path.join(
         configs.output_dir_, "_".join([f"diff", "model", "diagnostics.{filename_extension}"]))
-    diff_summary.to_csv(output_file_path.format(filename_extension="csv"), )
-    diff_summary.to_parquet(output_file_path.format(filename_extension="parquet"), )
-    logging.info(f"difference stats for overfitting analysis:\n{diff_summary}")
+    diff_summary.to_csv(_output_file_path.format(filename_extension="csv"), )
+    diff_summary.to_parquet(_output_file_path.format(filename_extension="parquet"), )
+    logging.info(f"difference stats for over-fitting analysis:\n{diff_summary}")

@@ -47,6 +47,7 @@ def parse_commandline() -> argparse.Namespace:
 
 if "__main__" == __name__:
     ds_utils.initialize_logger()
+    ds_utils.configure_pandas_display()
 
     root_resource_path: str = "../input/numerai_tournament_resource/"
     dataset_name: str = "latest_tournament_datasets"
