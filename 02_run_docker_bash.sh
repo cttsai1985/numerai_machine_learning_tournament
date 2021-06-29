@@ -4,7 +4,7 @@
 # DOCKER_IMAGE=rapidsai/rapidsai-core-dev:0.19-cuda11.2-devel-ubuntu20.04-py3.7
 DOCKER_IMAGE=cttsai1985/ml-env-rapids:latest
 
-SHM_SIZE=2G
+SHM_SIZE=4G
 
 RootSrcPath=${PWD}
 DockerRootSrcPath=/root/src/
