@@ -38,6 +38,7 @@ def parse_commandline() -> argparse.Namespace:
         description="execute a series of scripts", add_help=True,
         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument("--num-rows", type=int, default=5, help="display rows per attributes")
+    parser.add_argument("--num-round", type=int, default=None, help="the specific round instead of the live round.")
     args = parser.parse_args()
     return args
 
@@ -51,7 +52,13 @@ if "__main__" == __name__:
     col_metric: str = "attr"
     root_resource_path: str = "../input/numerai_tournament_resource/"
     helper = NumerAPIHelper(root_dir_path=root_resource_path, )
-    df = dd.read_csv(os.path.join(helper.result_dir_current_round_, "*.csv"), include_path_column=True).compute()
+
+    file_pattern = helper.result_dir_current_round_
+    if _args.num_round is not None:
+        file_pattern = os.path.join(
+            root_resource_path, "live_rounds", f"numerai_tournament_round_{_args.num_round:04d}")
+
+    df = dd.read_csv(os.path.join(file_pattern, "*.csv"), include_path_column=True).compute()
     df["path"] = df["path"].apply(lambda x: Path(x).stem)
     ret = df.set_index(["path", ]).groupby(
         col_metric).apply(lambda x: compute(x["score"], _MetricsFuncMapping.get(x.name), num=_args.num_rows))
