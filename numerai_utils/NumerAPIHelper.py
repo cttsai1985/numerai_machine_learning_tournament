@@ -120,37 +120,47 @@ class NumerAPIHelper:
         self.update_round_identifier_to_current()
         return self
 
+    def retrieve_submission_diagnostics(self, model_id: str, max_retry: int = 10, sleep_time: int = 30) -> pd.Series:
+        time.sleep(15)
+        series = pd.Series(self.api.submission_status(model_id))
+        for i in range(max_retry):
+            # noinspection PyBroadException
+            try:
+                while True:
+                    time.sleep(sleep_time)
+                    logging.info(f"retry {i}, waiting for valid submission_status return.")
+                    series = pd.Series(self.api.submission_status(model_id))
+                    if not series.isna().all():
+                        return series
+
+            except Exception:
+                logging.error(f"retry {i} times", exc_info=True)
+
+        return series
+
     def evaluate_online_predictions(
             self, model_name: Optional[str] = None, dir_path: Optional[str] = None, refresh: bool = False):
         if not dir_path:
             dir_path = self.root_dir_path
 
-        model_id = self.api.get_models()[model_name]
-        logging.info(f"model: {model_name} ({model_id})")
         result_filepath = os.path.join(self.result_dir_current_round_, Path(dir_path).name + ".csv")
         if os.path.exists(result_filepath) and not refresh:
             logging.info(f"skip upload since result {result_filepath} exists and not refresh")
             return True
 
+        # submit submission
+        model_id = self.api.get_models()[model_name]
+        logging.info(f"model: {model_name} ({model_id})")
         self.api.upload_predictions(os.path.join(dir_path, "tournament_predictions.csv"), model_id=model_id)
 
-        for i in range(10):
-            # noinspection PyBroadException
-            try:
-                time.sleep(5)
-                series = pd.Series(self.api.submission_status(model_id))
+        # retrieve submission
+        series = self.retrieve_submission_diagnostics(model_id)
 
-            except Exception:
-                logging.error(f"retry {i}", exc_info=True)
-                continue
-
-            break
-
+        # process
         metrics = series[_MetricsToQuery]
+        metrics_rating = series.reindex(index=list(map(lambda x: x + "Rating", _MetricsToQuery)))
         reg = re.compile('|'.join(map(re.escape, ["Rating", ])))
-        metrics_rating = list(map(
-            lambda s: reg.sub('', s), filter(lambda x: x.endswith("Rating"), series.index.tolist())))
-        metrics_rating = series[metrics_rating]
+        metrics_rating.index = list(map(lambda s: reg.sub('', s), metrics_rating.index.tolist()))
 
         df = pd.concat([metrics.rename("score"), metrics_rating.rename("rating")], axis=1)
         df.index.name = "attr"
