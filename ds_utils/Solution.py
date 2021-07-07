@@ -167,10 +167,13 @@ class Solution:
 
         infer_data = self.data_manager.get_data_helper_by_type(data_type=data_type)
         X, y, groups = infer_data.data_
-
-        ret = pd.DataFrame({"prediction": self.model.predict(X), "id": y.index}).reindex(columns=["id", "prediction"])
+        era = infer_data.groups_for_eval_
+        ret = pd.DataFrame(
+            {"yhat": self.model.predict(X), "id": y.index, era.name: era.values, y.name: y.values})
+        ret["prediction"] = ret.groupby(era.name)["yhat"].rank(method="dense", ascending=True, pct=True)
         ret.to_parquet(os.path.join(self.working_dir, f"{data_type}_predictions.parquet"))
-        ret.to_csv(os.path.join(self.working_dir, f"{data_type}_predictions.csv"), index=False)
+        ret.reindex(columns=["id", "prediction"]).to_csv(
+            os.path.join(self.working_dir, f"{data_type}_predictions.csv"), index=False)
         return self
 
     def evaluate(self, train_data_type: str = "training", valid_data_type: str = "validation", ):

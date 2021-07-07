@@ -21,7 +21,7 @@ def compute(root_data_path: str, root_prediction_path: str) -> pd.DataFrame:
 
     df = pd.read_parquet(data_file_path, columns=["id", "data_type", "era"]).set_index("id")
     df_preds = pd.read_parquet(prediction_file_path).set_index("id")
-    df["prediction"] = df_preds["prediction"]
+    df["prediction"] = df_preds["yhat"]
     group_df = df.groupby(["data_type", "era"])["prediction"].describe().groupby(level=0)
     df_mean = group_df.mean()
     df_mean["stats"] = "mean"
