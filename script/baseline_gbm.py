@@ -13,6 +13,8 @@ import ds_utils
 from ds_utils import Solution, SolutionConfigs, OptunaLGBMTuner
 from ds_utils import RefreshLevel
 
+ds_utils.configure_pandas_display()
+
 
 def mkdir_safe(dir_path: str, desired_permission=0o755):
     try:
@@ -34,8 +36,7 @@ def chmod_safe(dir_path: str, desired_permission=0o766):
 
 def parse_commandline() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Solver", add_help=True,
-        formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+        description="Solver", add_help=True, formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument("--configs", type=str, default="./configs.yaml", help="configs file")
     parser.add_argument(
         "--eval-data-type", type=str, default="training", help="data for training and evaluation on cross validation")
@@ -93,6 +94,8 @@ if "__main__" == __name__:
     _args = parse_commandline()
     main(_args)
     # TODO: P0
+    # TODO: persistent save/load yaml
+    # TODO: force to run low sampling ratio to replace era boosting
     # TODO: choose subset training set
     # TODO: fine tune model
     # TODO: add select era for model analytics
@@ -100,7 +103,6 @@ if "__main__" == __name__:
     # TODO: building
     # TODO: model helper
     # TODO: parameterize script, half way
-    # TODO: Post processing, halfway not really working
 
     # TODO: experimenting
     # TODO: multi class approach
