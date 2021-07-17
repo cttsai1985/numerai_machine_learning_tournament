@@ -36,8 +36,7 @@ def spearman_eval_scorer(y: np.ndarray, y_pred: np.ndarray, **kwargs):
 
 
 sklearn_spearman_scorer = make_scorer(
-    spearman_eval_scorer, greater_is_better=True, needs_proba=False, needs_threshold=False,)
-
+    spearman_eval_scorer, greater_is_better=True, needs_proba=False, needs_threshold=False, )
 
 _available_cv_splitter: Dict[str, Callable] = dict([
     ("StratifiedKFold", StratifiedKFold),
@@ -54,16 +53,14 @@ _available_evaluation_func: Dict[str, Callable] = dict([
     ("lightgbm_neg_spearman_corr", lgbm_spearman_eval_func)
 ])
 
-
 _available_sklearn_scorer: Dict[str, Callable] = dict([
     ("sklearn_spearman_scorer", sklearn_spearman_scorer),
 ])
 
 
-class SolutionConfigs:
+class BaseSolutionConfigs:
     def __init__(
-            self, root_resource_path: str, configs_file_path: str = "configs.yaml", eval_data_type: str = None,
-            num_boost_round: int = 2000):
+            self, root_resource_path: str, configs_file_path: str = "configs.yaml", eval_data_type: str = None, ):
         self.configs_file_path: Optional[str] = configs_file_path
         self.configs_hash_str: Optional[str] = None
 
@@ -80,38 +77,10 @@ class SolutionConfigs:
         self.columns_group: Optional[List[str]] = ["era"]
         self.columns_feature: Optional[List[str]] = None
 
-        self.template_cv_splitter_gen_query: str = "StratifiedKFold"
-        self.template_cv_splitter_gen: BaseCrossValidator = StratifiedKFold
-        self.template_cv_splitter_params: Dict[str, Any] = {"n_splits": 5, "shuffle": True, "random_state": 42}
-        self.cv_splitter: Optional[BaseCrossValidator] = None
-
-        self.model_name: str = "baseline_lightgbm_optuna_fair_mae"
-        self.model_gen_query: str = "LGBMRegressor"
-        self.model_gen: BaseEstimator = LGBMRegressor
-        self.model_base_params: Dict[str, Any] = {
-            "objective": "fair",
-            "metric": ["rmse", "neg_spearman_corr"],
-            "verbosity": -1,
-            "boosting_type": "gbdt",
-            "learning_rate": .01,
-            "max_depth": 24,
-            "n_jobs": 12
-        }
-        self.model_best_params: Optional[Dict[str, Any]] = None
-        self.early_stopping_rounds: Optional[int] = None
-        self.num_boost_round: int = num_boost_round
-
-        self.scorer_func_query: str = "sklearn_spearman_scorer"
-        self.scorer_func: Optional[Callable[..., Any]] = None
-        self.param_distributions: Optional[Dict[str, Any]] = None
-        self.n_trials: int = 10
-        self.model_tuning_seed: int = 42
-        self.fobj_gen: Optional[str] = None
-        self.fobj: Optional[Callable[..., Any]] = None
-        self.feval_gen: Optional[str] = None
-        self.feval: Optional[Callable[..., Any]] = None
+        self.model_name: str = "foobar"
 
         self._load_yaml_configs(configs_file_path)
+        self._load_feature_columns(feature_columns_file_path=os.path.join(self.output_dir_, "features.json"))
 
         # initialize
         self.input_data_dir: str = os.path.join(self.root_resource_path, self.dataset_name)
@@ -146,8 +115,90 @@ class SolutionConfigs:
             setattr(self, k, v)
             logging.info(f"set attribute {k}: {v}")
 
-        self._load_feature_columns(feature_columns_file_path=os.path.join(self.output_dir_, "features.json"))
+        return self
 
+    def _save_yaml_configs(self, output_data_dir: Optional[str] = None):
+        raise NotImplementedError
+
+    @property
+    def result_folder_name_(self) -> str:
+        if self.configs_hash_str is None:
+            self.configs_hash_str = hashlib.md5(open(self.configs_file_path, 'rb').read()).hexdigest()[:8]
+
+        return "_".join([self.model_name, self.configs_hash_str])
+
+    @property
+    def output_dir_(self) -> str:
+        return os.path.join(self.root_resource_path, self.result_folder_name_)
+
+    @property
+    def data_manager_(self) -> "DataManager":
+        if self.data_manager is None:
+            logging.info(f"initialize data manager on {self.input_data_dir}")
+            self.data_manager = DataManager.from_configs(self)
+
+        return self.data_manager
+
+    @property
+    def unfitted_model_(self) -> BaseEstimator:
+        raise NotImplementedError
+
+    @property
+    def template_cv_splitter_(self) -> BaseCrossValidator:
+        raise NotImplementedError
+
+    @property
+    def cv_splitter_(self) -> BaseCrossValidator:
+        raise NotImplementedError
+
+    @classmethod
+    def from_config_file(cls, file_path: str):
+        pass
+
+
+class SolutionConfigs(BaseSolutionConfigs):
+    def __init__(
+            self, root_resource_path: str, configs_file_path: str = "configs.yaml", eval_data_type: str = None,
+            num_boost_round: int = 2000):
+        super().__init__(
+            root_resource_path=root_resource_path, configs_file_path=configs_file_path, eval_data_type=eval_data_type)
+
+        self.template_cv_splitter_gen_query: str = "StratifiedKFold"
+        self.template_cv_splitter_gen: BaseCrossValidator = StratifiedKFold
+        self.template_cv_splitter_params: Dict[str, Any] = {"n_splits": 5, "shuffle": True, "random_state": 42}
+        self.cv_splitter: Optional[BaseCrossValidator] = None
+
+        self.model_name: str = "baseline_lightgbm_optuna_fair_mae"
+        self.model_gen_query: str = "LGBMRegressor"
+        self.model_gen: BaseEstimator = LGBMRegressor
+        self.model_base_params: Dict[str, Any] = {
+            "objective": "fair",
+            "metric": ["rmse", "neg_spearman_corr"],
+            "verbosity": -1,
+            "boosting_type": "gbdt",
+            "learning_rate": .01,
+            "max_depth": 24,
+            "n_jobs": 12
+        }
+        self.model_best_params: Optional[Dict[str, Any]] = None
+        self.early_stopping_rounds: Optional[int] = None
+        self.num_boost_round: int = num_boost_round
+
+        self.scorer_func_query: str = "sklearn_spearman_scorer"
+        self.scorer_func: Optional[Callable[..., Any]] = None
+        self.param_distributions: Optional[Dict[str, Any]] = None
+        self.n_trials: int = 10
+        self.model_tuning_seed: int = 42
+        self.fobj_gen: Optional[str] = None
+        self.fobj: Optional[Callable[..., Any]] = None
+        self.feval_gen: Optional[str] = None
+        self.feval: Optional[Callable[..., Any]] = None
+
+        self._load_yaml_configs(configs_file_path)
+        self._configure_solution_from_yaml()
+        # self._save_yaml_configs()
+
+    def _configure_solution_from_yaml(self, ):
         self.model_gen = _available_model_gen.get(self.model_gen_query)
         self.template_cv_splitter_gen = _available_cv_splitter.get(self.template_cv_splitter_gen_query)
         self.fobj = _available_objective_func.get(self.fobj_gen)
@@ -185,25 +236,6 @@ class SolutionConfigs:
         return self
 
     @property
-    def result_folder_name_(self) -> str:
-        if self.configs_hash_str is None:
-            self.configs_hash_str = hashlib.md5(open(self.configs_file_path, 'rb').read()).hexdigest()[:8]
-
-        return "_".join([self.model_name, self.configs_hash_str])
-
-    @property
-    def output_dir_(self) -> str:
-        return os.path.join(self.root_resource_path, self.result_folder_name_)
-
-    @property
-    def data_manager_(self) -> "DataManager":
-        if self.data_manager is None:
-            logging.info(f"initialize data manager on {self.input_data_dir}")
-            self.data_manager = DataManager.from_configs(self)
-
-        return self.data_manager
-
-    @property
     def unfitted_model_(self) -> BaseEstimator:
         if self.model_best_params is None:
             logging.info(f"generate model {self.model_gen} with base parameters: {self.base_params}")
@@ -223,6 +255,58 @@ class SolutionConfigs:
                 configs=self).produce(data_type=self.eval_data_type)
 
         return self.cv_splitter
+
+    @classmethod
+    def from_config_file(cls, file_path: str):
+        pass
+
+
+class EnsembleSolutionConfigs(BaseSolutionConfigs):
+    def __init__(
+            self, root_resource_path: str, configs_file_path: str = "configs.yaml", eval_data_type: str = None, ):
+        super().__init__(
+            root_resource_path=root_resource_path, configs_file_path=configs_file_path, eval_data_type=eval_data_type)
+
+        self.model_name: str = "ensemble_base"
+        self.ensemble_model_configs: Optional[List[SolutionConfigs]] = None
+        self.model_dirs: Optional[List[str]] = None
+
+        self._load_yaml_configs(configs_file_path)
+        self._configure_solution_from_yaml()
+        # self._save_yaml_configs()
+
+    def _configure_solution_from_yaml(self, ):
+        _configs = list()
+        for config in self.ensemble_model_configs:
+            if not (os.path.exists(config) and os.path.isfile(config)):
+                logging.info(f"configs does not exist: {config}")
+                continue
+
+            _config = SolutionConfigs(
+                root_resource_path=self.root_resource_path, configs_file_path=config,
+                eval_data_type=self.eval_data_type, )
+            _configs.append(_config)
+            logging.info(f"load configs: {config}, from location: {_config.output_dir_}")
+
+        self.ensemble_model_configs = _configs
+        self.model_dirs = [config.output_dir_ for config in _configs]
+        logging.info(f"load {len(self.ensemble_model_configs)} configs")
+        return self
+
+    def _save_yaml_configs(self, output_data_dir: Optional[str] = None):
+        raise NotImplementedError
+
+    @property
+    def unfitted_model_(self) -> BaseEstimator:
+        raise NotImplementedError
+
+    @property
+    def template_cv_splitter_(self) -> BaseCrossValidator:
+        raise NotImplementedError
+
+    @property
+    def cv_splitter_(self) -> BaseCrossValidator:
+        raise NotImplementedError
 
     @classmethod
     def from_config_file(cls, file_path: str):

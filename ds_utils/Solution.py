@@ -16,14 +16,73 @@ from sklearn.base import BaseEstimator
 from .DefaultConfigs import RefreshLevel
 
 
-class Solution:
+class BaseSolution:
+    def __init__(
+            self, refresh_level: RefreshLevel, data_manager: "DataManager",
+            scoring_func: Optional[Callable] = None, working_dir: Optional[str] = None, **kwargs):
+        self.refresh_level: RefreshLevel = refresh_level
+        self.refresh_level_criterion: RefreshLevel = RefreshLevel("model")
+
+        self.working_dir: str = working_dir if working_dir else "./"
+        Path(self.working_dir).mkdir(parents=True, exist_ok=True)
+        self.data_manager: "DataManager" = data_manager
+
+        self.scoring_func: Callable = scoring_func
+
+        self.round_digit: int = 3
+
+        self.valid_predictions: Optional[pd.DataFrame] = None
+        self.valid_score_all: Optional[pd.DataFrame] = None
+        self.valid_score_split: Optional[pd.DataFrame] = None
+        self.valid_fnc_all: Optional[pd.DataFrame] = None
+        self.valid_fnc_split: Optional[pd.DataFrame] = None
+
+    def _do_cross_val(self, data_type: Optional[str] = None):
+        raise NotImplementedError
+
+    def _save_prediction(self, eval_type: str = "cross_val"):
+        self.cross_val_predictions.to_parquet(
+            os.path.join(self.working_dir, f"{eval_type}_predictions.parquet"))
+        self.cross_val_score_split.to_parquet(os.path.join(self.working_dir, "cross_val_score_split.parquet"))
+        return self
+
+    def _do_model_fit(self, data_type: Optional[str] = None):
+        raise NotImplementedError
+
+    def _do_validation(self, data_type: Optional[str] = None):
+        raise NotImplementedError
+
+    def _do_inference(self, data_type: str = "tournament", ):
+        raise NotImplementedError
+
+    def evaluate(self, train_data_type: str = "training", valid_data_type: str = "validation", ):
+        self._do_cross_val(data_type=train_data_type)
+
+        self.load_model()
+        self._do_model_fit(data_type=train_data_type)
+        self._do_validation(data_type=valid_data_type)
+        return self
+
+    def run(self, train_data_type: str = "training", infer_data_type: str = "tournament", ):
+        self.load_model()
+        self._do_model_fit(data_type=train_data_type)
+        self._do_inference(data_type=infer_data_type)
+        return self
+
+    @classmethod
+    def from_configs(cls, args: Namespace, configs: "SolutionConfigs", output_data_path: str, **kwargs):
+        raise NotImplementedError
+
+
+class Solution(BaseSolution):
     def __init__(
             self, refresh_level: RefreshLevel, data_manager: "DataManager",
             model: BaseEstimator, fit_params: Optional[Dict[str, Any]] = None,
             cv_splitter: Optional[BaseCrossValidator] = None, scoring_func: Optional[Callable] = None,
-            working_dir: Optional[str] = None):
-        self.refresh_level: RefreshLevel = refresh_level
-        self.refresh_level_criterion: RefreshLevel = RefreshLevel("model")
+            working_dir: Optional[str] = None, **kwargs):
+
+        super().__init__(
+            refresh_level=refresh_level, data_manager=data_manager, scoring_func=scoring_func, working_dir=working_dir)
 
         self.is_fitted: bool = False
         self.model: Optional[BaseEstimator] = model
@@ -34,25 +93,11 @@ class Solution:
         if cv_splitter is not None:
             self.has_cv_splitter = True
 
-        self.working_dir: str = working_dir if working_dir else "./"
-        Path(self.working_dir).mkdir(parents=True, exist_ok=True)
-        self.data_manager: "DataManager" = data_manager
-
-        self.scoring_func: Callable = scoring_func
-
-        self.round_digit: int = 3
-
         self.cross_val_predictions: Optional[pd.DataFrame] = None
         self.cross_val_score_all: Optional[pd.DataFrame] = None
         self.cross_val_score_split: Optional[pd.DataFrame] = None
         self.cross_val_fnc_all: Optional[pd.DataFrame] = None
         self.cross_val_fnc_split: Optional[pd.DataFrame] = None
-
-        self.valid_predictions: Optional[pd.DataFrame] = None
-        self.valid_score_all: Optional[pd.DataFrame] = None
-        self.valid_score_split: Optional[pd.DataFrame] = None
-        self.valid_fnc_all: Optional[pd.DataFrame] = None
-        self.valid_fnc_split: Optional[pd.DataFrame] = None
 
     @property
     def model_filepath_(self) -> str:
@@ -191,10 +236,130 @@ class Solution:
         return self
 
     @classmethod
-    def from_configs(cls, args: Namespace, configs: "SolutionConfigs", output_data_path: str):
+    def from_configs(cls, args: Namespace, configs: "SolutionConfigs", output_data_path: str, **kwargs):
         return cls(
             args.refresh_level, configs.data_manager_, configs.unfitted_model_, scoring_func=configs.scoring_func,
-            cv_splitter=configs.cv_splitter_, working_dir=output_data_path, )
+            cv_splitter=configs.cv_splitter_, working_dir=output_data_path, **kwargs)
+
+
+class EnsembleSolution(BaseSolution):
+    def __init__(
+            self, refresh_level: RefreshLevel, data_manager: "DataManager", ensemble_method: str,
+            solution_dirs: List[str], scoring_func: Optional[Callable] = None, working_dir: Optional[str] = None,
+            **kwargs):
+        super().__init__(
+            refresh_level=refresh_level, data_manager=data_manager, scoring_func=scoring_func, working_dir=working_dir)
+        self.ensemble_method: str = ensemble_method
+        self.solution_dirs: List[str] = solution_dirs
+
+    def _do_cross_val(self, data_type: Optional[str] = None):
+        raise NotImplementedError
+
+    def _do_model_fit(self, data_type: Optional[str] = None):
+        raise NotImplementedError
+
+    @staticmethod
+    def _check_prediction(df: pd.DataFrame) -> pd.DataFrame:
+        if "id" in df.columns:
+            df = df.set_index("id")
+
+        return df
+
+    def _ensemble_predictions(self, eval_type: str, groupby_col: str) -> pd.DataFrame:
+        logging.info(f"ensemble for {eval_type}")
+        predictions = list()
+        for solution_dir in self.solution_dirs:
+            file_path = os.path.join(solution_dir, f"{eval_type}_predictions.parquet")
+            if not (os.path.exists(file_path) and os.path.isfile(file_path)):
+                logging.info(f"prediction file does not exist: {file_path}")
+                continue
+
+            df = pd.read_parquet(file_path)
+            df["yhat"] = df.groupby(groupby_col)["yhat"].rank(method="dense", ascending=True, pct=True)
+            predictions.append(df)
+
+        if not predictions:
+            logging.warning(f"no predictions to form ensemble.")
+            return pd.DataFrame()
+
+        df = pd.concat(predictions, sort=False)
+        df = self._check_prediction(df)
+        ret = df.reset_index().groupby([groupby_col] + df.index.names).mean().reset_index(groupby_col)
+        logging.info(f"Generated {ret.shape[0]} predictions from {df.shape[0]} samples")
+
+        # analytics
+        df_corr = df.copy()
+        cols = list()
+        for i, pred in enumerate(predictions):
+            col = f"yhat_{i:03d}"
+            df_corr[col] = self._check_prediction(pred)["yhat"]
+            cols.append(col)
+
+        logging.info(
+            f"correlation intra predictions:\n{df_corr.groupby(groupby_col)[cols].corr(method='spearman')}")
+        return ret
+
+    def _do_validation(self, data_type: Optional[str] = None):
+        if data_type == "skip":
+            return self
+
+        if not data_type:
+            data_type = "validation"
+
+        valid_data = self.data_manager.get_data_helper_by_type(data_type=data_type)
+        eval_type: str = "validation"
+
+        era = valid_data.groups_for_eval_
+
+        ret = self._ensemble_predictions(eval_type, groupby_col=era.name)
+        if ret.empty:
+            return self
+
+        ret["yhat"] = ret.groupby(era.name)["yhat"].rank(method="dense", ascending=True, pct=True)
+        yhat = ret["yhat"]
+        ret = valid_data.evaluate(yhat=yhat, scoring_func=self.scoring_func)
+
+        self.valid_predictions, self.valid_score_all, self.valid_score_split = ret
+        self.valid_predictions.to_parquet(os.path.join(self.working_dir, f"{eval_type}_predictions.parquet"))
+        self.valid_score_split.to_parquet(os.path.join(self.working_dir, f"{eval_type}_score_split.parquet"))
+        self.valid_score_all.to_parquet(os.path.join(self.working_dir, f"{eval_type}_score_all.parquet"))
+
+        ret = valid_data.evaluate(yhat=yhat, scoring_func=self.scoring_func, feature_neutral=True)
+        _, self.valid_fnc_all, self.valid_fnc_split = ret
+        self.valid_fnc_all.to_parquet(os.path.join(self.working_dir, "validation_fnc_all.parquet"))
+        self.valid_fnc_split.to_parquet(os.path.join(self.working_dir, "validation_fnc_split.parquet"))
+
+    def _do_inference(self, data_type: str = "tournament", ):
+        logging.info(f"inference on {data_type}")
+
+        infer_data = self.data_manager.get_data_helper_by_type(data_type=data_type)
+        X, y, groups = infer_data.data_
+        era = infer_data.groups_for_eval_
+
+        ret = self._ensemble_predictions(data_type, groupby_col=era.name).reindex(index=y.index).reset_index()
+        if ret.empty:
+            return self
+
+        ret["prediction"] = ret.groupby(era.name)["yhat"].rank(method="dense", ascending=True, pct=True)
+
+        ret.to_parquet(os.path.join(self.working_dir, f"{data_type}_predictions.parquet"))
+        ret.reindex(columns=["id", "prediction"]).to_csv(
+            os.path.join(self.working_dir, f"{data_type}_predictions.csv"), index=False)
+        return self
+
+    def evaluate(self, train_data_type: str = "training", valid_data_type: str = "validation", ):
+        self._do_validation(data_type=valid_data_type)
+        return self
+
+    def run(self, train_data_type: str = "training", infer_data_type: str = "tournament", ):
+        self._do_inference(data_type=infer_data_type)
+        return self
+
+    @classmethod
+    def from_configs(cls, args: Namespace, configs: "SolutionConfigs", output_data_path: str, **kwargs):
+        return cls(
+            args.refresh_level, configs.data_manager_, configs.ensemble_method, configs.model_dirs,
+            scoring_func=configs.scoring_func, working_dir=output_data_path, **kwargs)
 
 
 if "__main__" == __name__:

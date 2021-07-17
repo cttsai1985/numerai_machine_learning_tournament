@@ -3,8 +3,8 @@ from .DefaultConfigs import initialize_logger, add_file_logger
 from .DefaultConfigs import RefreshLevel
 
 from . import Helper
-from .Solution import Solution
-from .SolutionConfigs import SolutionConfigs
+from .Solution import Solution, EnsembleSolution
+from .SolutionConfigs import SolutionConfigs, EnsembleSolutionConfigs
 from .Tuner import OptunaLGBMTuner
 from . import Metrics
 # from .OptimalRounder import OptimalRounder
