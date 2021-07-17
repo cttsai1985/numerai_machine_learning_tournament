@@ -176,19 +176,32 @@ def compute(
         root_data_path: str, root_prediction_path: str, eval_data_type: str = "validation",
         columns_corr: Optional[List[str]] = None) -> pd.DataFrame:
     if eval_data_type not in ["training", "validation"]:
+        logging.info(f"eval_data_type is not allowed: {eval_data_type}")
         return pd.DataFrame()
 
     result_type = {"training": "cross_val", "validation": "validation"}.get(eval_data_type)
 
-    feature_columns_file_path = os.path.join(configs.meta_data_dir, "features_numerai.json")
-    example_file_path: str = os.path.join(root_data_path, "numerai_example_predictions_data.parquet")
-    feature_file_path: str = os.path.join(root_data_path, f"numerai_{eval_data_type}_data.parquet")
     score_split_file_path: str = os.path.join(root_prediction_path, f"{result_type}_score_split.parquet")
     prediction_file_path: str = os.path.join(root_prediction_path, f"{result_type}_predictions.parquet")
     feature_neutral_corr_file_path: str = os.path.join(root_prediction_path, f"{result_type}_fnc_split.parquet")
+
+    file_paths: List[str] = [score_split_file_path, prediction_file_path, feature_neutral_corr_file_path]
+    file_status: List[bool] = list(map(lambda x: os.path.exists(x), file_paths))
+    if not all(file_status):
+        logging.info(f"skip computing {eval_data_type}")
+        for file_path, status in zip(file_paths, file_status):
+            if not status:
+                logging.info(f"missing result file: {file_path}")
+
+        return pd.DataFrame()
+
+    feature_columns_file_path = os.path.join(configs.meta_data_dir, "features_numerai.json")
+    example_file_path: str = os.path.join(root_data_path, "numerai_example_predictions_data.parquet")
+    feature_file_path: str = os.path.join(root_data_path, f"numerai_{eval_data_type}_data.parquet")
     output_file_path: str = os.path.join(
         root_prediction_path, "_".join([f"{result_type}", "model", "diagnostics.{filename_extension}"]))
 
+    # configure computing tasks
     func_list: List[Tuple[str, Callable, Dict[str, Any]]] = [
         ("valid_sharpe", compute_sharpe, dict(filepath=score_split_file_path, columns=columns_corr)),
         ("valid_corr", compute_corr_mean, dict(filepath=score_split_file_path, columns=columns_corr)),
@@ -217,6 +230,7 @@ def compute(
     if eval_data_type == "validation":
         func_list += func_list_with_mmc
 
+    # doing the real computing here
     ret_collect = list()
     for i in func_list:
         name, func, params = i
@@ -251,9 +265,10 @@ if "__main__" == __name__:
         root_data_path=_root_data_path, root_prediction_path=configs.output_dir_, eval_data_type="validation",
         columns_corr=_columns_corr)
 
-    diff_summary = (validation_summary - cross_val_summary).dropna().reindex(index=cross_val_summary.index)
-    _output_file_path: str = os.path.join(
-        configs.output_dir_, "_".join([f"diff", "model", "diagnostics.{filename_extension}"]))
-    diff_summary.to_csv(_output_file_path.format(filename_extension="csv"), )
-    diff_summary.to_parquet(_output_file_path.format(filename_extension="parquet"), )
-    logging.info(f"difference stats for over-fitting analysis:\n{diff_summary}")
+    if not (cross_val_summary.empty and validation_summary.empty):
+        diff_summary = (validation_summary - cross_val_summary).dropna().reindex(index=cross_val_summary.index)
+        _output_file_path: str = os.path.join(
+            configs.output_dir_, "_".join([f"diff", "model", "diagnostics.{filename_extension}"]))
+        diff_summary.to_csv(_output_file_path.format(filename_extension="csv"), )
+        diff_summary.to_parquet(_output_file_path.format(filename_extension="parquet"), )
+        logging.info(f"difference stats for over-fitting analysis:\n{diff_summary}")
