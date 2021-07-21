@@ -18,8 +18,8 @@ from .DefaultConfigs import RefreshLevel
 
 class BaseSolution:
     def __init__(
-            self, refresh_level: RefreshLevel, data_manager: "DataManager",
-            scoring_func: Optional[Callable] = None, working_dir: Optional[str] = None, **kwargs):
+            self, refresh_level: RefreshLevel, data_manager: "DataManager", scoring_func: Optional[Callable] = None,
+            working_dir: Optional[str] = None, **kwargs):
         self.refresh_level: RefreshLevel = refresh_level
         self.refresh_level_criterion: RefreshLevel = RefreshLevel("model")
 
@@ -36,6 +36,20 @@ class BaseSolution:
         self.valid_score_split: Optional[pd.DataFrame] = None
         self.valid_fnc_all: Optional[pd.DataFrame] = None
         self.valid_fnc_split: Optional[pd.DataFrame] = None
+
+    def _cast_for_classifier_fit(self, target: pd.Series) -> pd.Series:
+        cast_type = "label2index"
+        if self.data_manager.has_cast_mapping(cast_type):
+            return self.data_manager.cast_target(target, cast_type)
+
+        return target
+
+    def _cast_for_classifier_predict(self, target: pd.Series) -> pd.Series:
+        cast_type = "index2label"
+        if self.data_manager.has_cast_mapping(cast_type):
+            return self.data_manager.cast_target(target, cast_type)
+
+        return target
 
     def _do_cross_val(self, data_type: Optional[str] = None):
         raise NotImplementedError
@@ -76,9 +90,9 @@ class BaseSolution:
 
 class Solution(BaseSolution):
     def __init__(
-            self, refresh_level: RefreshLevel, data_manager: "DataManager",
-            model: BaseEstimator, fit_params: Optional[Dict[str, Any]] = None,
-            cv_splitter: Optional[BaseCrossValidator] = None, scoring_func: Optional[Callable] = None,
+            self, refresh_level: RefreshLevel, data_manager: "DataManager", model: BaseEstimator,
+            fit_params: Optional[Dict[str, Any]] = None, cv_splitter: Optional[BaseCrossValidator] = None,
+            scoring_func: Optional[Callable] = None,
             working_dir: Optional[str] = None, **kwargs):
 
         super().__init__(
@@ -135,10 +149,14 @@ class Solution(BaseSolution):
 
         cross_val_data = self.data_manager.get_data_helper_by_type(data_type=data_type)
         X, y, groups = cross_val_data.data_
+
+        y = self._cast_for_classifier_fit(y)
         yhat = cross_val_predict(
             self.model, X, y=y, cv=self.cv_splitter, n_jobs=None, verbose=0, fit_params=self.fit_params,
             pre_dispatch='2*n_jobs', method='predict')
+
         yhat = pd.Series(yhat, index=y.index, name="yhat")
+        yhat = self._cast_for_classifier_predict(yhat)
 
         eval_type: str = "cross_val"
         ret = cross_val_data.evaluate(yhat=yhat, scoring_func=self.scoring_func)
@@ -170,6 +188,7 @@ class Solution(BaseSolution):
         logging.info(f"training model...")
         train_data = self.data_manager.get_data_helper_by_type(data_type=data_type)
         X, y, groups = train_data.data_
+        y = self._cast_for_classifier_fit(y)
         self.model.fit(X, y, **self.fit_params)  # TODO: add fit_params:
         self.is_fitted = True
         self.save_model()
@@ -188,8 +207,9 @@ class Solution(BaseSolution):
 
         valid_data = self.data_manager.get_data_helper_by_type(data_type=data_type)
         X, y, groups = valid_data.data_
-
         yhat = pd.Series(self.model.predict(X), index=y.index, name="yhat")
+
+        yhat = self._cast_for_classifier_predict(yhat)
 
         eval_type: str = "validation"
         ret = valid_data.evaluate(yhat=yhat, scoring_func=self.scoring_func)
@@ -213,9 +233,15 @@ class Solution(BaseSolution):
         infer_data = self.data_manager.get_data_helper_by_type(data_type=data_type)
         X, y, groups = infer_data.data_
         era = infer_data.groups_for_eval_
+
         ret = pd.DataFrame(
             {"yhat": self.model.predict(X), "id": y.index, era.name: era.values, y.name: y.values})
-        ret["prediction"] = ret.groupby(era.name)["yhat"].rank(method="dense", ascending=True, pct=True)
+
+        ret["yhat"] = self._cast_for_classifier_predict(ret["yhat"])
+        if not self.data_manager.has_cast_mapping("index2label"):
+            logging.info(f"rank predictions from regression model")
+            ret["prediction"] = ret.groupby(era.name)["yhat"].rank(method="dense", ascending=True, pct=True)
+
         ret.to_parquet(os.path.join(self.working_dir, f"{data_type}_predictions.parquet"))
         ret.reindex(columns=["id", "prediction"]).to_csv(
             os.path.join(self.working_dir, f"{data_type}_predictions.csv"), index=False)
@@ -340,7 +366,9 @@ class EnsembleSolution(BaseSolution):
         if ret.empty:
             return self
 
-        ret["prediction"] = ret.groupby(era.name)["yhat"].rank(method="dense", ascending=True, pct=True)
+        if not self.data_manager.has_cast_mapping("index2label"):
+            logging.info(f"rank predictions from regression model")
+            ret["prediction"] = ret.groupby(era.name)["yhat"].rank(method="dense", ascending=True, pct=True)
 
         ret.to_parquet(os.path.join(self.working_dir, f"{data_type}_predictions.parquet"))
         ret.reindex(columns=["id", "prediction"]).to_csv(

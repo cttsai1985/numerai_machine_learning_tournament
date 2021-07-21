@@ -16,7 +16,7 @@ from sklearn.base import BaseEstimator
 from sklearn.model_selection import StratifiedKFold, PredefinedSplit
 from sklearn.metrics import make_scorer
 from scipy.stats import spearmanr
-from lightgbm import LGBMRegressor
+from lightgbm import LGBMRegressor, LGBMClassifier
 
 from .PerformanceTracker import PerformanceTracker
 from . import Helper
@@ -27,8 +27,24 @@ def spearman_corr(y: np.ndarray, y_preds: np.ndarray, **kwargs):
     return spearmanr(y, pd.Series(y_preds).rank(pct=True, method="first"))[0]
 
 
+def cast_proba_into_label(labels: np.ndarray, preds: np.ndarray) -> np.ndarray:
+    if labels.shape == preds.shape:
+        return preds
+
+    preds = np.argmax(preds.reshape(labels.shape[0], preds.shape[0] // labels.shape[0]), axis=1)
+    return preds
+
+
 def lgbm_spearman_eval_func(preds: np.ndarray, train_data: lightgbm.Dataset) -> Tuple[str, float, bool]:
-    return "neg_spearman_corr", -1. * spearman_corr(train_data.get_label(), preds), False
+    labels = train_data.get_label()
+    preds = cast_proba_into_label(labels, preds)
+    return "neg_spearman_corr", -1. * spearman_corr(labels, preds), False
+
+
+def lgbm_mae_eval_func(preds: np.ndarray, train_data: lightgbm.Dataset) -> Tuple[str, float, bool]:
+    labels = train_data.get_label()
+    preds = cast_proba_into_label(labels, preds)
+    return "mean_absolute_error", np.abs((labels - preds).mean()), False
 
 
 def spearman_eval_scorer(y: np.ndarray, y_pred: np.ndarray, **kwargs):
@@ -44,13 +60,15 @@ _available_cv_splitter: Dict[str, Callable] = dict([
 
 _available_model_gen: Dict[str, Callable] = dict([
     ("LGBMRegressor", LGBMRegressor),
+    ("LGBMClassifier", LGBMClassifier),
 ])
 
 _available_objective_func: Dict[str, Callable] = dict([
 ])
 
 _available_evaluation_func: Dict[str, Callable] = dict([
-    ("lightgbm_neg_spearman_corr", lgbm_spearman_eval_func)
+    ("lightgbm_neg_spearman_corr", lgbm_spearman_eval_func),
+    ("lightgbm_mean_absolute_error", lgbm_mae_eval_func)
 ])
 
 _available_sklearn_scorer: Dict[str, Callable] = dict([
@@ -76,8 +94,12 @@ class BaseSolutionConfigs:
         self.column_target: Optional[str] = "target"
         self.columns_group: Optional[List[str]] = ["era"]
         self.columns_feature: Optional[List[str]] = None
+        self.num_class: int = 1
 
         self.model_name: str = "foobar"
+
+        self.label2index: Dict[int, float] = dict()
+        self.index2label: Dict[float, int] = dict()
 
         self._load_yaml_configs(configs_file_path)
         self._load_feature_columns(feature_columns_file_path=os.path.join(self.output_dir_, "features.json"))
@@ -204,6 +226,12 @@ class SolutionConfigs(BaseSolutionConfigs):
         self.fobj = _available_objective_func.get(self.fobj_gen)
         self.feval = _available_evaluation_func.get(self.feval_gen)
         self.scorer_func = _available_sklearn_scorer.get(self.scorer_func_query)
+
+        if "Classifier" in self.model_gen_query:
+            logging.info(f"enable label2index mapping: {self.label2index}, index2label mapping: {self.index2label}")
+            self.label2index: Dict[int, float] = {0: .0, 1: .25, 2: .5, 3: .75, 4: 1.}
+            self.index2label: Dict[float, int] = {v: k for k, v in self.label2index.items()}
+
         return self
 
     def _save_yaml_configs(self, output_data_dir: Optional[str] = None):
