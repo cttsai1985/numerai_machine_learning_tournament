@@ -8,6 +8,7 @@ import dask.dataframe as dd
 import pandas as pd
 from pathlib import Path
 from typing import Optional, Callable, Any, Dict, List, Tuple
+from ds_utils.Utils import scale_uniform, natural_sort
 
 
 class DataHelper:
@@ -19,6 +20,7 @@ class DataHelper:
         self.col_target: str = col_target
         self.cols_feature: List[str] = cols_feature
         self.cols_group: Optional[List[str]] = cols_group
+        self.cols_group_for_eval: List[str] = ["era"]
 
         self.data: Optional[pd.DataFrame] = None
         self.is_loaded: bool = False
@@ -70,12 +72,13 @@ class DataHelper:
 
     def feature_neutralize(self, yhat: pd.Series) -> pd.Series:
         # Normalize submission
-        neutralized_yhat = (yhat.rank(method="first").values - 0.5) / len(yhat)
+        scale_uniform_yhat = scale_uniform(yhat).values
 
         # Neutralize submission to features
         f = self.X_.values
-        neutralized_yhat -= da.asarray(f).dot(da.asarray(np.linalg.pinv(f)).dot(neutralized_yhat)).compute()
+        neutralized_x = da.asarray(f).dot(da.asarray(np.linalg.pinv(f)).dot(scale_uniform_yhat)).compute()
 
+        neutralized_yhat = scale_uniform_yhat - neutralized_x
         ret = self.groups_.to_frame()
         ret["yhat"] = neutralized_yhat
         ret["std"] = ret.groupby(self.group_name_).transform("std")
@@ -92,10 +95,10 @@ class DataHelper:
             yhat = self.feature_neutralize(yhat)
             scoring_type = "corr"
 
-        # TODO: cv with era, cannot with target
         predictions = pd.concat([self.y_, yhat.rename(col_yhat), self.groups_for_eval_], axis=1)
         score_split = predictions.groupby(self.group_name_for_eval_).apply(
             lambda x: scoring_func(x[self.y_.name], x[col_yhat], scoring_type=scoring_type))
+        score_split = score_split.reindex(index=natural_sort(score_split.index.tolist()))
         score_all = scoring_func(
             self.y_, predictions[col_yhat], scoring_type=scoring_type).to_frame(self.group_name_for_eval_)
         score_all["sharpe"] = score_split.mean() / score_split.std()
@@ -122,7 +125,6 @@ class DataHelper:
 
     @property
     def groups_(self) -> pd.Series:
-        # TODO: currently this is group-based cv: LeaveOneGroupOut, add stratified by group later
         if not self.cols_group:
             return pd.Series()
 
@@ -134,11 +136,11 @@ class DataHelper:
 
     @property
     def groups_for_eval_(self) -> pd.Series:
-        return self.data.reindex(columns=["era"]).squeeze()
+        return self.data.reindex(columns=self.cols_group_for_eval).squeeze()
 
     @property
     def group_name_for_eval_(self) -> str:
-        return "_".join(["era"])
+        return "_".join(self.cols_group_for_eval)
 
     @property
     def y_(self) -> pd.Series:

@@ -16,30 +16,14 @@ sys.path.insert(0, EXTERNAL_UTILS_LIB)
 
 import ds_utils
 from ds_utils import SolutionConfigs
-from ds_utils.Metrics import payout, spearman_corr, pearson_corr
-
-
-def unif(series: pd.Series) -> pd.Series:
-    return (series.rank(method="first") - 0.5) / len(series)
-
-
-# to neutralize any series by any other series
-def neutralize_series(series: pd.Series, by: pd.Series, proportion: float = 1.0):
-    scores = series.values.reshape(-1, 1)
-    exposures = by.values.reshape(-1, 1)
-
-    # this line makes series neutral to a constant column so that it's centered and for sure gets corr 0 with exposures
-    exposures = np.hstack((exposures, np.array([series.mean()] * len(exposures)).reshape(-1, 1)))
-    correction = proportion * (exposures.dot(np.linalg.lstsq(exposures, scores, rcond=None)[0]))
-    corrected_scores = scores - correction
-    neutralized = pd.Series(corrected_scores.ravel(), index=series.index)
-    return neutralized
+from ds_utils.Utils import scale_uniform, neutralize_series, auto_corr_penalty
+from ds_utils.Metrics import payout, scale_uniform, spearman_corr, pearson_corr
 
 
 def compute_single_mmc(
         x: pd.DataFrame, col_target: str = "target", col_submit: str = "yhat",
         col_example: str = "prediction") -> float:
-    series = neutralize_series(unif(x[col_submit]), unif(x[col_example]))
+    series = neutralize_series(scale_uniform(x[col_submit]), scale_uniform(x[col_example]))
     return np.cov(series, x[col_target])[0, 1] / (0.29 ** 2)
 
 
@@ -69,6 +53,18 @@ def _target_dataframe(
 def compute_sharpe(filepath: str, columns: Optional[List[str]] = None, ) -> pd.Series:
     df_corr = _read_dataframe(filepath, columns=columns)
     return (df_corr.mean() / df_corr.std()).rename("corr sharpe")
+
+
+def compute_smart_sharpe(filepath: str, columns: Optional[List[str]] = None, ) -> pd.Series:
+    df_corr = _read_dataframe(filepath, columns=columns)
+    return (df_corr.mean() / (df_corr.std(ddof=1) * df_corr.apply(auto_corr_penalty))).rename("corr smart sharpe")
+
+
+def compute_smart_sortino_ratio(filepath: str, columns: Optional[List[str]] = None, target: float = .02) -> pd.Series:
+    df_corr = _read_dataframe(filepath, columns=columns)
+    xt = df_corr - target
+    ret = xt.mean() / (((np.sum(np.minimum(0, xt) ** 2) / (xt.shape[0] - 1)) ** .5) * df_corr.apply(auto_corr_penalty))
+    return ret.rename("corr smart sortino ratio")
 
 
 def compute_corr_mean(filepath: str, columns: Optional[List[str]] = None, ) -> pd.Series:
@@ -206,6 +202,9 @@ def compute(
         ("valid_sharpe", compute_sharpe, dict(filepath=score_split_file_path, columns=columns_corr)),
         ("valid_corr", compute_corr_mean, dict(filepath=score_split_file_path, columns=columns_corr)),
         ("valid_fnc", compute_fnc, dict(filepath=feature_neutral_corr_file_path, columns=columns_corr)),
+        ("valid_smart_sharpe", compute_smart_sharpe, dict(filepath=score_split_file_path, columns=columns_corr)),
+        ("valid_smart_sortino_ratio", compute_smart_sortino_ratio,
+         dict(filepath=score_split_file_path, columns=columns_corr)),
         ("valid_payout", compute_payout, dict(filepath=score_split_file_path, columns=columns_corr)),
         ("valid_std", compute_corr_std, dict(filepath=score_split_file_path, columns=columns_corr)),
         ("max_feature_exposure", compute_max_feature_exposure, dict(
@@ -234,12 +233,13 @@ def compute(
     ret_collect = list()
     for i in func_list:
         name, func, params = i
+        logging.info(f"compute {name}")
         locals()[name] = func(**params)
         ret_collect.append(locals()[name])
 
     summary = pd.concat(ret_collect, axis=1).T.round(6)
-    logging.info(f"stats on {eval_data_type}:\n{summary}")
     summary.index.name = "attr"
+    logging.info(f"stats on {eval_data_type}:\n{summary}")
     summary.to_csv(output_file_path.format(filename_extension="csv"), )
     summary.to_parquet(output_file_path.format(filename_extension="parquet"), )
     # TODO: add select era
@@ -265,10 +265,10 @@ if "__main__" == __name__:
         root_data_path=_root_data_path, root_prediction_path=configs.output_dir_, eval_data_type="validation",
         columns_corr=_columns_corr)
 
-    if not (cross_val_summary.empty and validation_summary.empty):
+    if not (cross_val_summary.empty or validation_summary.empty):
         diff_summary = (validation_summary - cross_val_summary).dropna().reindex(index=cross_val_summary.index)
         _output_file_path: str = os.path.join(
-            configs.output_dir_, "_".join([f"diff", "model", "diagnostics.{filename_extension}"]))
+            configs.output_dir_, "_".join(["diff", "model", "diagnostics.{filename_extension}"]))
         diff_summary.to_csv(_output_file_path.format(filename_extension="csv"), )
         diff_summary.to_parquet(_output_file_path.format(filename_extension="parquet"), )
         logging.info(f"difference stats for over-fitting analysis:\n{diff_summary}")

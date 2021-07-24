@@ -2,6 +2,7 @@ from .DefaultConfigs import configure_pandas_display
 from .DefaultConfigs import initialize_logger, add_file_logger
 from .DefaultConfigs import RefreshLevel
 
+from . import Utils
 from . import Helper
 from .Solution import Solution, EnsembleSolution
 from .SolutionConfigs import SolutionConfigs, EnsembleSolutionConfigs
