@@ -38,8 +38,12 @@ class RefreshLevel:
     def __ge__(self, other):
         return self.level_value >= other.level_value
 
+    def __repr__(self):
+        return f"RefreshLevel: {self.level_name} ({self.level_value})"
+
 
 if "__main__" == __name__:
     print(RefreshLevel("predictions") > RefreshLevel("model"))
     print(RefreshLevel("predictions") <= RefreshLevel("model"))
     print(RefreshLevel("model") == RefreshLevel("model"))
+    print(RefreshLevel("predictions"))
