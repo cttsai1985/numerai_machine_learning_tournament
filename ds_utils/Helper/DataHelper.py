@@ -99,6 +99,7 @@ class DataHelper:
         score_split = predictions.groupby(self.group_name_for_eval_).apply(
             lambda x: scoring_func(x[self.y_.name], x[col_yhat], scoring_type=scoring_type))
         score_split = score_split.reindex(index=natural_sort(score_split.index.tolist()))
+
         score_all = scoring_func(
             self.y_, predictions[col_yhat], scoring_type=scoring_type).to_frame(self.group_name_for_eval_)
         score_all["sharpe"] = score_split.mean() / score_split.std()

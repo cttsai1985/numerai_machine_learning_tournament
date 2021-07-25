@@ -24,7 +24,7 @@ import ds_utils
 def map_func(x: str, reg: re.Pattern, output_format: str, digits: int = 5) -> str:
     try:
         ret = reg.search(x).groupdict()
-    except:
+    except Exception:
         return x
 
     ret["number"] = ret["number"].zfill(digits)

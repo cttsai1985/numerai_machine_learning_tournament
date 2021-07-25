@@ -67,5 +67,8 @@ if "__main__" == __name__:
     ret = ret.groupby(col_metric).apply(lambda x: x.reset_index()).reindex(columns=["target", "score", "path"])
     ret = ret.loc[list(_MetricsFuncMapping.keys())]
     logging.info(f"best models:\n{ret}")
-    with open(os.path.join(file_pattern, "summary.txt"), "w") as f:
+
+    output_filepath = os.path.join(file_pattern, "summary.txt")
+    with open(output_filepath, "w") as f:
         f.write(ret.to_string())
+        logging.info(f"write the ranking results to: {output_filepath}")
