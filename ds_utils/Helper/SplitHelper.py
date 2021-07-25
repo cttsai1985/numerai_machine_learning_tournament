@@ -4,7 +4,7 @@ import pandas as pd
 from typing import Optional
 from sklearn.model_selection import BaseCrossValidator, PredefinedSplit
 
-from ..DataManager import DataManager
+from ds_utils.DataManager import DataManager
 
 
 class PredefinedSplitHelper:
