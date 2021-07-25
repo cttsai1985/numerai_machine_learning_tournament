@@ -13,7 +13,7 @@ from functools import partial
 from typing import Optional, Callable, Any, Dict, List, Tuple, Union
 from sklearn.model_selection import BaseCrossValidator
 from sklearn.base import BaseEstimator
-from sklearn.model_selection import StratifiedKFold, PredefinedSplit
+from sklearn.model_selection import StratifiedKFold, LeavePGroupsOut, GroupKFold, PredefinedSplit
 from sklearn.metrics import make_scorer
 from scipy.stats import spearmanr
 from lightgbm import LGBMRegressor, LGBMClassifier
@@ -21,34 +21,13 @@ from lightgbm import LGBMRegressor, LGBMClassifier
 from .PerformanceTracker import PerformanceTracker
 from . import Helper
 from .DataManager import DataManager
+from .Metrics import spearman_corr
+from .LGBMUtils import lgbm_spearman_eval_func, lgbm_mae_eval_func
 
 
-def spearman_corr(y: np.ndarray, y_preds: np.ndarray, **kwargs):
-    return spearmanr(y, pd.Series(y_preds).rank(pct=True, method="first"))[0]
-
-
-def cast_proba_into_label(labels: np.ndarray, preds: np.ndarray) -> np.ndarray:
-    if labels.shape == preds.shape:
-        return preds
-
-    preds = np.argmax(preds.reshape(labels.shape[0], preds.shape[0] // labels.shape[0]), axis=1)
-    return preds
-
-
-def lgbm_spearman_eval_func(preds: np.ndarray, train_data: lightgbm.Dataset) -> Tuple[str, float, bool]:
-    labels = train_data.get_label()
-    preds = cast_proba_into_label(labels, preds)
-    return "neg_spearman_corr", -1. * spearman_corr(labels, preds), False
-
-
-def lgbm_mae_eval_func(preds: np.ndarray, train_data: lightgbm.Dataset) -> Tuple[str, float, bool]:
-    labels = train_data.get_label()
-    preds = cast_proba_into_label(labels, preds)
-    return "mean_absolute_error", np.abs((labels - preds).mean()), False
-
-
+# Scikit-Learn
 def spearman_eval_scorer(y: np.ndarray, y_pred: np.ndarray, **kwargs):
-    return spearmanr(y, pd.Series(y_pred).rank(pct=True, method="first"))[0]
+    return spearman_corr(y, y_pred)
 
 
 sklearn_spearman_scorer = make_scorer(
@@ -56,7 +35,10 @@ sklearn_spearman_scorer = make_scorer(
 
 _available_cv_splitter: Dict[str, Callable] = dict([
     ("StratifiedKFold", StratifiedKFold),
-    ("PredefinedSplit", PredefinedSplit)])
+    ("LeavePGroupsOut", LeavePGroupsOut),
+    ("GroupKFold", GroupKFold),
+    ("PredefinedSplit", PredefinedSplit),
+])
 
 _available_model_gen: Dict[str, Callable] = dict([
     ("LGBMRegressor", LGBMRegressor),
