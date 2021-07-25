@@ -1,4 +1,5 @@
 import logging
+import re
 import pandas as pd
 import numpy as np
 from typing import Optional, Callable, Any, Dict, List, Tuple, Union
@@ -25,3 +26,26 @@ def neutralize_series(series: pd.Series, by: pd.Series, proportion: float = 1.0)
     corrected_scores = scores - correction
     neutralized = pd.Series(corrected_scores.ravel(), index=series.index)
     return neutralized
+
+
+def atoi(text: str) -> Union[str, bool]:
+    return int(text) if text.isdigit() else text
+
+
+def natural_keys(text: str) -> List[str]:
+    """
+    alist.sort(key=natural_keys) sorts in human order
+    http://nedbatchelder.com/blog/200712/human_sorting.html
+    (See Toothy's implementation in the comments)
+    """
+    return list(map(atoi, re.split(r'(\d+)', text)))
+
+
+def natural_sort(list_of_str: List[str]) -> List[str]:
+    list_of_str.sort(key=natural_keys)
+    return list_of_str
+
+
+if "__main__" == __name__:
+    alist = ["something1", "something12", "something17", "something2", "something25", "something29"]
+    print(alist, natural_sort(alist))
