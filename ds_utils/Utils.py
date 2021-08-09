@@ -1,3 +1,4 @@
+import hashlib
 import logging
 import os
 import yaml
@@ -6,6 +7,10 @@ from pathlib import Path
 import pandas as pd
 import numpy as np
 from typing import Optional, Callable, Any, Dict, List, Tuple, Union
+
+
+def get_file_hash(file_path: str, length: int = 8) -> str:
+    return hashlib.md5(open(file_path, 'rb').read()).hexdigest()[:length]
 
 
 def scale_uniform(series: pd.Series, middle: float = 0.5) -> pd.Series:

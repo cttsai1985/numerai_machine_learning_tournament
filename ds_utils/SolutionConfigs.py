@@ -23,6 +23,7 @@ from . import Helper
 from .DataManager import DataManager
 from .Metrics import spearman_corr
 from .LGBMUtils import lgbm_spearman_eval_func, lgbm_mae_eval_func
+from .Utils import get_file_hash
 
 
 # Scikit-Learn
@@ -93,12 +94,13 @@ class BaseSolutionConfigs:
         # self._save_yaml_configs()
 
     def _load_feature_columns(self, feature_columns_file_path: Optional[str] = None):
+        default_file_path: str = os.path.join(self.meta_data_dir, "features_numerai.json")
         if feature_columns_file_path is None:
-            file_path = os.path.join(self.meta_data_dir, "features_numerai.json")
+            file_path = default_file_path
             logging.info(f"load feature columns from default location: {feature_columns_file_path}")
 
         if not all([os.path.exists(feature_columns_file_path), os.path.isfile(feature_columns_file_path)]):
-            file_path = os.path.join(self.meta_data_dir, "features_numerai.json")
+            file_path = default_file_path
             logging.info(f"load feature columns from default location: {file_path}")
 
         with open(file_path, "r") as fp:
@@ -127,8 +129,7 @@ class BaseSolutionConfigs:
     @property
     def result_folder_name_(self) -> str:
         if self.configs_hash_str is None:
-            self.configs_hash_str = hashlib.md5(open(self.configs_file_path, 'rb').read()).hexdigest()[:8]
-
+            self.configs_hash_str = get_file_hash(self.configs_file_path)
         return "_".join([self.model_name, self.configs_hash_str])
 
     @property
