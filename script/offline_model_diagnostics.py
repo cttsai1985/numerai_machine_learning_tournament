@@ -103,7 +103,7 @@ def compute_mmc(prediction_filepath: str, example_filepath: str) -> pd.Series:
     return _compute_mmc(df_target, col_group="era", col_example="prediction")
 
 
-def comupte_mmc_mean(
+def compute_mmc_mean(
         prediction_filepath: str, example_filepath: str, columns: Optional[List[str]] = None, ) -> pd.Series:
     mmc = compute_mmc(prediction_filepath=prediction_filepath, example_filepath=example_filepath)
     return pd.Series([mmc.mean()] * len(columns), index=columns, name="mmc mean")
@@ -217,7 +217,7 @@ def compute(
         ("corr_plus_mmc_sharpe", compute_corr_plus_mmc, dict(
             corr_filepath=score_split_file_path, prediction_filepath=prediction_file_path,
             example_filepath=example_file_path, columns=columns_corr)),
-        ("mmc_mean", comupte_mmc_mean, dict(
+        ("mmc_mean", compute_mmc_mean, dict(
             prediction_filepath=prediction_file_path, example_filepath=example_file_path, columns=columns_corr)),
         ("corr_plus_mmc_sharpe_diff", compute_corr_plus_mmc_sharpe_diff, dict(
             corr_filepath=score_split_file_path, prediction_filepath=prediction_file_path,

@@ -96,6 +96,8 @@ if "__main__" == __name__:
     # TODO: P0
     # TODO: persistent save/load yaml
     # TODO: force to run low sampling ratio to replace era boosting
+    # TODO: investigate mmc issue
+    # TODO: load hpo search range
     # TODO: choose subset training set
     # TODO: fine tune model
     # TODO: add select era for model analytics
