@@ -62,6 +62,33 @@ _PARAMS_TO_CHECK: List[Tuple[str, List[str]]] = [
     ("rf", ["learning_rate"])
 ]
 
+# SEARCH RANGE
+_DEFAULT_SEARCH_RANGE: Dict[str, Dict[str, Any]] = {
+    # loss function tuning
+    "fair_c": {"discrete": [0.5, 0.75, 1, 1.25, 1.5, 2]},
+    "alpha": {"discrete": [0.5, 0.8, 0.9, 0.95, 1., 2.]},
+
+    "learning_rate": {"discrete": [.002, .005, .01, .02, .05, .1]},
+
+    "feature_fraction": {"low": .05, "high": .2, "step": .05},
+    "bagging_fraction": {"low": .6, "high": .95, "step": .01},
+    "bagging_freq": {"discrete": [1, 2, 3, 4, 5, 6, 7]},
+
+    # regularization
+    "lambda_l1": {"low": 1e-3, "high": 100., "log": True},
+    "lambda_l2": {"low": 1e-6, "high": 10., "log": True},
+    "min_child_samples": {"discrete": [10, 15, 20, 25, 30, 35, 40, 45, 50, 60, 80, 100]},
+
+    # goss specific parameters
+    "top_rate": {"discrete": [.15, .2, .25, .3, .4]},
+    "other_rate": {"discrete": [.05, 0.075, .1, .125, .15, .2]},
+
+    # dart specific parameters
+    "max_drop": {"discrete": [0, 0, 10, 25, 40, 50, 60, 75, 90, 100]},
+    "drop_rate": {"low": .05, "high": .20, "log": False},
+    "skip_drop": {"low": .25, "high": .75, "log": False},
+}
+
 
 def _modify_supported_parameters(param_values: List[Any]) -> List[str]:
     for k, v in _ADDITIONAL_SUPPORTED_PARAM_NAMES.items():
@@ -176,8 +203,8 @@ class OptunaLightGBMTunerCV(LightGBMTunerCV):
             params: Dict[str, Any],
             train_set: "lgb.Dataset",
             num_boost_round: int = 1000,
-            folds: Optional[Union[
-                Generator[Tuple[int, int], None, None], Iterator[Tuple[int, int]], "BaseCrossValidator",]] = None,
+            folds: Optional[
+                Union[Generator[Tuple[int, int], None, None], Iterator[Tuple[int, int]], "BaseCrossValidator", ]] = None,
             nfold: int = 5,
             stratified: bool = True,
             shuffle: bool = True,
@@ -207,31 +234,7 @@ class OptunaLightGBMTunerCV(LightGBMTunerCV):
             study=study, optuna_callbacks=optuna_callbacks, verbosity=verbosity, show_progress_bar=show_progress_bar,
             model_dir=model_dir, return_cvbooster=return_cvbooster)
 
-        self._param_range: Dict[str, Dict[str, Any]] = {
-            # loss function tuning
-            "fair_c": {"discrete": [0.5, 0.75, 1, 1.25, 1.5, 2]},
-            "alpha": {"discrete": [0.5, 0.8, 0.9, 0.95, 1., 2.]},
-
-            "learning_rate": {"discrete": [.002, .005, .01, .02, .05, .1]},
-
-            "feature_fraction": {"low": .05, "high": .2, "step": .05},
-            "bagging_fraction": {"low": .6, "high": .95, "step": .01},
-            "bagging_freq": {"discrete": [1, 2, 3, 4, 5, 6, 7]},
-
-            # regularization
-            "lambda_l1": {"low": 1e-3, "high": 100., "log": True},
-            "lambda_l2": {"low": 1e-6, "high": 10., "log": True},
-            "min_child_samples": {"discrete": [10, 15, 20, 25, 30, 35, 40, 45, 50, 60, 80, 100]},
-
-            # goss specific parameters
-            "top_rate": {"discrete": [.15, .2, .25, .3, .4]},
-            "other_rate": {"discrete": [.05, 0.075, .1, .125, .15, .2]},
-
-            # dart specific parameters
-            "max_drop": {"discrete": [0, 0, 10, 25, 40, 50, 60, 75, 90, 100]},
-            "drop_rate": {"low": .05, "high": .20, "log": False},
-            "skip_drop": {"low": .25, "high": .75, "log": False},
-        }
+        self._param_range: Dict[str, Dict[str, Any]] = _DEFAULT_SEARCH_RANGE.copy()  # TODO: Load customized
 
     def _tune_discrete_with_grid_template(self, param_name: str, tuning_task_name: str):
         param = self._param_range[param_name]
@@ -298,7 +301,7 @@ class OptunaLightGBMTunerCV(LightGBMTunerCV):
         self._tune_params(["bagging_fraction", "bagging_freq"], n_trials, optuna.samplers.TPESampler(), "bagging")
         return True
 
-    def tune_learning_rate(self) -> bool:   # TODO: find the correct condition for skip
+    def tune_learning_rate(self) -> bool:  # TODO: find the correct condition for skip
         if "rf" in self.lgbm_params.values():
             return False
 
@@ -363,6 +366,7 @@ class OptunaLightGBMTunerCV(LightGBMTunerCV):
         logging.info(f"current best after tune_regularization_factors: {self.best_params}")
         self.tune_min_data_in_leaf()
         logging.info(f"current best after tune_min_data_in_leaf: {self.best_params}")
+        # TODO: fine tune some params later
 
     @staticmethod
     def _drop_ineffective_params(params: Dict[str, Any], param_value: Any, params_to_drop: List[str]) -> Dict[str, Any]:
@@ -389,6 +393,6 @@ class OptunaLightGBMTunerCV(LightGBMTunerCV):
             params.update(self.lgbm_params)
             for params_to_check, v in _PARAMS_TO_CHECK:
                 params = self._drop_ineffective_params(params, params_to_check, params_to_drop=v)
-                
+
             _modify_supported_parameters(list(self.lgbm_params.values()))
             return params
