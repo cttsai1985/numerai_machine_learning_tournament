@@ -232,6 +232,7 @@ class SolutionConfigs(BaseSolutionConfigs):
             "early_stopping_rounds": self.early_stopping_rounds,
             "template_cv_splitter_gen_query": self.template_cv_splitter_gen_query,
             "template_cv_splitter_params": self.template_cv_splitter_params,
+            "param_distributions": self.param_distributions,
             "feval_gen": self.feval_gen,
             "fobj_gen": self.fobj_gen,
             "scorer_func_query": self.scorer_func_query,

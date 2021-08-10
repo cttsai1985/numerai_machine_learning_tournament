@@ -18,8 +18,7 @@ from ..SolutionConfigs import SolutionConfigs
 class _BaseOptunaTuner:
     def __init__(
             self, refresh_level: RefreshLevel, data_manager: "DataManager", cv_splitter: BaseCrossValidator,
-            base_params: Dict[str, Any], seed: int = 42,
-            working_dir: Optional[str] = None):
+            base_params: Dict[str, Any], seed: int = 42, working_dir: Optional[str] = None):
 
         self.refresh_level: RefreshLevel = refresh_level
         self.refresh_level_criterion: RefreshLevel = RefreshLevel("hyper_parameters")
@@ -137,9 +136,9 @@ class OptunaSklearnTuner(_BaseOptunaTuner):
 class OptunaLGBMTuner(_BaseOptunaTuner):
     def __init__(
             self, refresh_level: RefreshLevel, data_manager: "DataManager", cv_splitter: BaseCrossValidator,
-            base_params: Dict[str, Any], num_boost_round: int = 2000, early_stopping_rounds: int = 100, seed: int = 42,
-            fobj: Optional[Callable[..., Any]] = None, feval: Optional[Callable[..., Any]] = None,
-            working_dir: Optional[str] = None):
+            base_params: Dict[str, Any], param_distributions: Dict[str, Dict[str, Any]], num_boost_round: int = 2000,
+            early_stopping_rounds: int = 100, seed: int = 42, fobj: Optional[Callable[..., Any]] = None,
+            feval: Optional[Callable[..., Any]] = None, working_dir: Optional[str] = None):
         super().__init__(
             refresh_level=refresh_level, data_manager=data_manager, cv_splitter=cv_splitter, base_params=base_params,
             seed=seed, working_dir=working_dir)
@@ -150,6 +149,8 @@ class OptunaLGBMTuner(_BaseOptunaTuner):
         self.num_boost_round: int = num_boost_round
         self.early_stopping_rounds: int = early_stopping_rounds
 
+        self.param_distributions: Dict[str, Dict[str, Any]] = param_distributions
+
     def _run(self, data_type: str = "training"):
         train_x, train_y, train_group = self.data_manager.get_data_helper_by_type(data_type).data_
 
@@ -157,7 +158,8 @@ class OptunaLGBMTuner(_BaseOptunaTuner):
             self.base_params["num_class"] = train_y.nunique()
         train_y = self.data_manager.cast_target(train_y, cast_type="label2index")
         tuner = OptunaLightGBMTunerCV(
-            self.base_params, train_set=lgb.Dataset(train_x, label=train_y), fobj=self.fobj, feval=self.feval,
+            self.base_params, param_distributions=self.param_distributions,
+            train_set=lgb.Dataset(train_x, label=train_y), fobj=self.fobj, feval=self.feval,
             num_boost_round=self.num_boost_round, early_stopping_rounds=self.early_stopping_rounds,
             verbose_eval=100, folds=self.cv_splitter, seed=self.seed, time_budget=None, study=None,
             model_dir=self.working_dir, )
@@ -173,6 +175,6 @@ class OptunaLGBMTuner(_BaseOptunaTuner):
     def from_configs(cls, args: argparse.Namespace, configs: SolutionConfigs, output_data_path: str):
         return cls(
             refresh_level=args.refresh_level, data_manager=configs.data_manager_, cv_splitter=configs.cv_splitter_,
-            base_params=configs.model_base_params, num_boost_round=configs.num_boost_round,
-            early_stopping_rounds=configs.early_stopping_rounds, seed=configs.model_tuning_seed,
-            fobj=configs.fobj, feval=configs.feval, working_dir=output_data_path)
+            base_params=configs.model_base_params, param_distributions=configs.param_distributions,
+            num_boost_round=configs.num_boost_round, early_stopping_rounds=configs.early_stopping_rounds,
+            seed=configs.model_tuning_seed, fobj=configs.fobj, feval=configs.feval, working_dir=output_data_path)
