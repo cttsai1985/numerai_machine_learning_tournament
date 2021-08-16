@@ -97,7 +97,8 @@ def main(args: argparse.Namespace):
     task_sequence = config_file.get("compute")
     if not task_sequence:
         task_sequence = list()
-    for execute_params in task_sequence:
+    for i, execute_params in enumerate(task_sequence):
+        logging.info(f"progress: {i:8d} / {len(task_sequence)}")
         execute_config_file = execute_params["config_file"]
         logging.info(f"inference with: {execute_config_file}")
         execute_on_process(compile_infer(**execute_params))
@@ -107,6 +108,8 @@ def main(args: argparse.Namespace):
             logging.info(f"offline evaluate with: {execute_config_file}")
             for diagnostic_params in offline_diagnostic_configs:
                 execute_on_process(compile_offline_diagnostics(**diagnostic_params, config_file=execute_config_file))
+        else:
+            logging.info(f"skip offline evaluation")
 
         logging.info(f"online evaluate with: {execute_config_file}")
         online_diagnostic_configs = config_file["online_diagnostics"]
@@ -115,6 +118,9 @@ def main(args: argparse.Namespace):
                 diagnostic_params.update(config_file["numerapi_configs"])
                 execute_on_process(
                     compile_online_diagnostics(config_file=execute_config_file, **diagnostic_params))
+
+        else:
+            logging.info(f"skip online evaluation")
 
     task_sequence = config_file.get("closure")
     if not task_sequence:
