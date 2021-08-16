@@ -88,10 +88,16 @@ def main(args: argparse.Namespace):
     with open(args.configs, 'r') as fp:
         config_file = yaml.load(fp, Loader=yaml.FullLoader)
 
-    for execute_params in config_file.get("preprocess", list()):
+    task_sequence = config_file.get("preprocess")
+    if not task_sequence:
+        task_sequence = list()
+    for execute_params in task_sequence:
         execute_on_process(compile_base_command(**execute_params))
 
-    for execute_params in config_file.get("compute", list()):
+    task_sequence = config_file.get("compute")
+    if not task_sequence:
+        task_sequence = list()
+    for execute_params in task_sequence:
         execute_config_file = execute_params["config_file"]
         logging.info(f"inference with: {execute_config_file}")
         execute_on_process(compile_infer(**execute_params))
@@ -110,7 +116,10 @@ def main(args: argparse.Namespace):
                 execute_on_process(
                     compile_online_diagnostics(config_file=execute_config_file, **diagnostic_params))
 
-    for execute_params in config_file.get("closure", list()):
+    task_sequence = config_file.get("closure")
+    if not task_sequence:
+        task_sequence = list()
+    for execute_params in task_sequence:
         execute_on_process(compile_base_command(**execute_params))
 
     return
