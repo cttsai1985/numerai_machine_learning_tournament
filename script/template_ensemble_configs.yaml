@@ -1,0 +1,9 @@
+column_target: target
+columns_group:
+  - era
+  - target
+data_mapping: null
+dataset_name: latest_tournament_datasets
+model_name: null
+ensemble_method: mean
+ensemble_model_configs: null

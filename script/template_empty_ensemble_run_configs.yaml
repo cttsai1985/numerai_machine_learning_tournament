@@ -1,0 +1,15 @@
+numerapi_configs:
+  numerai_public_id: numerapiPublicID
+  numerai_secret: numerapiSecret
+  model_name: cttsai
+online_diagnostics: null
+offline_diagnostics: null
+compute:
+  - command:
+      - --compute-all
+    config_file: null
+    refresh_level: predictions
+    script_file: ./ensemble.py
+    script_type: python
+preprocess: null
+closure: null

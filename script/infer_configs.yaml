@@ -1,0 +1,27 @@
+diagnostics:
+  script_type: python
+  script_file: ./online_model_diagnostics.py
+  model_name: ctbaselinelgbm
+  numerai_public_id: numerapiPublicID
+  numerai_secret: numerapiSecret
+compute:
+- command:
+  - --compute-infer
+  config_file: ../configs/configs_baseline_lgbm_goss_l2.yaml
+  refresh_level: predictions
+  script_file: ./baseline_gbm.py
+  script_type: python
+- command:
+  - --compute-infer
+  config_file: ../configs/configs_baseline_lgbm_xt_fair.yaml
+  refresh_level: predictions
+  script_file: ./baseline_gbm.py
+  script_type: python
+preprocess:
+- script_file: ./download_new_datasets.py
+  script_type: python
+- script_file: ./compute_era_similarity.py
+  script_type: python
+postprocess:
+- script_file: ./select_model.py
+  script_type: python
