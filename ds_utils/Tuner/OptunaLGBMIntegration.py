@@ -206,8 +206,8 @@ class OptunaLightGBMTunerCV(LightGBMTunerCV):
             param_distributions: Dict[str, Dict[str, Any]],
             train_set: "lgb.Dataset",
             num_boost_round: int = 1000,
-            folds: Optional[
-                Union[Generator[Tuple[int, int], None, None], Iterator[Tuple[int, int]], "BaseCrossValidator",]] = None,
+            folds: Optional[Union[
+                Generator[Tuple[int, int], None, None], Iterator[Tuple[int, int]], "BaseCrossValidator"]] = None,
             nfold: int = 5,
             stratified: bool = True,
             shuffle: bool = True,
@@ -278,7 +278,6 @@ class OptunaLightGBMTunerCV(LightGBMTunerCV):
 
     def tune_loss_function(self, **kwargs) -> bool:
         _param = self.lgbm_params.get("objective")
-
         obj_param_name = self._get_param_from_objective(_param)
         if obj_param_name is None:
             return False
@@ -289,8 +288,7 @@ class OptunaLightGBMTunerCV(LightGBMTunerCV):
             f"loss function tuning {obj_param_name}", param_name=obj_param_name, param_search_range=param_search_range)
         return True
 
-    def tune_loss_function_stage2(
-            self, task_name: str = "tune_loss_function_stage2", **kwargs) -> bool:
+    def tune_loss_function_stage2(self, task_name: str = "tune_loss_function_stage2", **kwargs) -> bool:
         _param = self.lgbm_params.get("objective")
         obj_param_name = self._get_param_from_objective(_param)
         if obj_param_name is None:
@@ -299,7 +297,6 @@ class OptunaLightGBMTunerCV(LightGBMTunerCV):
         current_best_params = self.best_params[obj_param_name]
         param_search_range = self._create_grid_search_range(
             current_best_params - .2, current_best_params + .2, step=.1, round_digits=3)
-
         param_search_range = self._filter_out_of_range(param_search_range, param=self._param_range[obj_param_name])
         self._tune_float_with_grid_template(
             task_name, param_name=obj_param_name, param_search_range=param_search_range)
@@ -388,45 +385,45 @@ class OptunaLightGBMTunerCV(LightGBMTunerCV):
         # Sampling.
         self.sample_train_set()
 
-        status = self.tune_goss_parameters(n_trials=10)
+        status = self.tune_loss_function()
         if status:
-            logging.info(f"current best after tune_goss_parameters: {self.best_params}")
-
-        status = self.tune_dart_parameters(n_trials=10)
-        if status:
-            logging.info(f"current best after tune_dart_parameters: {self.best_params}")
+            logging.info(f"current best after tune_loss_function: {self.best_params}")
 
         status = self.tune_learning_rate()
         if status:
             logging.info(f"current best after tune_learning_rate: {self.best_params}")
 
-        status = self.tune_loss_function()
+        status = self.tune_loss_function_stage2()
         if status:
-            logging.info(f"current best after tune_loss_function: {self.best_params}")
+            logging.info(f"current best after tune_loss_function_stage2: {self.best_params}")
+
+        status = self.tune_goss_parameters(n_trials=25)
+        if status:
+            logging.info(f"current best after tune_goss_parameters: {self.best_params}")
+
+        status = self.tune_dart_parameters(n_trials=25)
+        if status:
+            logging.info(f"current best after tune_dart_parameters: {self.best_params}")
 
         self.tune_feature_fraction()
         logging.info(f"current best after tune_feature_fraction: {self.best_params}")
         self.tune_num_leaves(n_trials=20)
         logging.info(f"current best after tune_num_leaves: {self.best_params}")
 
-        status = self.tune_bagging(n_trials=10)
+        status = self.tune_bagging(n_trials=20)
         if status:
             logging.info(f"current best after tune_bagging: {self.best_params}")
 
         self.tune_feature_fraction_stage2()
         logging.info(f"current best after tune_feature_fraction_stage2: {self.best_params}")
 
-        status = self.tune_goss_parameters(n_trials=20, task_name="fine-tuned goss boosting")
+        status = self.tune_goss_parameters(n_trials=15, task_name="fine-tuned goss boosting")
         if status:
             logging.info(f"current best after tune_goss_parameters 2nd time: {self.best_params}")
 
-        status = self.tune_dart_parameters(n_trials=20, task_name="fine-tuned dart boosting")
+        status = self.tune_dart_parameters(n_trials=15, task_name="fine-tuned dart boosting")
         if status:
             logging.info(f"current best after tune_dart_parameters 2nd time: {self.best_params}")
-
-        status = self.tune_loss_function_stage2(n_trials=5)
-        if status:
-            logging.info(f"current best after tune_loss_function_stage2: {self.best_params}")
 
         self.tune_regularization_factors(n_trials=20)
         logging.info(f"current best after tune_regularization_factors: {self.best_params}")

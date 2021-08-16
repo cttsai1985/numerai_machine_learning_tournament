@@ -70,13 +70,13 @@ class _BaseOptunaTuner:
         return self
 
     def load_optimized_params(self):
-        if not (os.path.exists(self.params_filepath_) or os.path.isfile(self.params_filepath_)):
+        if not (os.path.exists(self.params_filepath_) and os.path.isfile(self.params_filepath_)):
             logging.info(f"optimized hyper-parameters not exist: {self.params_filepath_}")
             return self
 
         with open(self.params_filepath_, "r") as fp:
             self.best_params = json.load(fp)
-            logging.info(f"load best hyper-parameters: {self.best_params}")
+            logging.info(f"load best hyper-parameters: {self.best_params} from {self.params_filepath_}")
 
         self.is_tuned = True
         return self

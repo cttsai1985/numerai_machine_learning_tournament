@@ -73,12 +73,11 @@ def main(args: argparse.Namespace):
     if args.debug:
         configs.num_boost_round = 5
 
-    tuner = OptunaLGBMTuner.from_configs(
-        args=args, configs=configs, output_data_path=output_data_path).load_optimized_params()
+    tuner = OptunaLGBMTuner.from_configs(args=args, configs=configs, output_data_path=output_data_path)
     if args.compute_hpo:
         tuner.run(data_type=args.eval_data_type)
 
-    configs.model_best_params = tuner.params_
+    configs.load_optimized_params_from_tuner(tuner=tuner)
     solver = Solution.from_configs(args=args, configs=configs, output_data_path=output_data_path)
     if args.compute_eval:
         solver.evaluate(train_data_type=args.eval_data_type, valid_data_type="validation")

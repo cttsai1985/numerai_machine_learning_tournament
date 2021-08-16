@@ -119,11 +119,14 @@ class BaseSolutionConfigs:
 
         for k, v in dict_file.items():
             setattr(self, k, v)
-            logging.info(f"set attribute {k}: {v}")
+            logging.info(f"from configs yaml to set attribute {k}: {v}")
 
         return self
 
     def _save_yaml_configs(self, output_data_dir: Optional[str] = None):
+        raise NotImplementedError
+
+    def load_optimized_params_from_tuner(self, tuner):
         raise NotImplementedError
 
     @property
@@ -247,13 +250,18 @@ class SolutionConfigs(BaseSolutionConfigs):
 
         return self
 
+    def load_optimized_params_from_tuner(self, tuner):
+        self.model_best_params = tuner.load_optimized_params().params_
+        logging.info(f"load best params through tuner: {self.model_best_params}")
+        return self
+
     @property
     def unfitted_model_(self) -> BaseEstimator:
         if self.model_best_params is None:
             logging.info(f"generate model {self.model_gen} with base parameters: {self.base_params}")
             return self.model_gen(**self.base_params)
 
-        logging.info(f"generate model {self.model_gen} with base parameters: {self.model_best_params}")
+        logging.info(f"generate model {self.model_gen} with best fitted parameters: {self.model_best_params}")
         return self.model_gen(**self.model_best_params)
 
     @property
