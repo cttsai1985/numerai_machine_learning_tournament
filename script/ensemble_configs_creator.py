@@ -42,6 +42,9 @@ def parse_commandline() -> argparse.Namespace:
     parser.add_argument(
         "--configs-pattern", type=str, default=default_configs_pattern, help="default configs patten")
     parser.add_argument("--output-dir", type=str, default=default_output_dir, help="directory to write out")
+    parser.add_argument("--low", type=int,default=2, help="min number of files to ensemble")
+    parser.add_argument("--high", type=int, default=6, help="high number of files to ensemble")
+
     args = parser.parse_args()
     return args
 
@@ -74,7 +77,7 @@ if "__main__" == __name__:
     logging.info(f"available configs: {len(existing_config_files)}: {existing_config_files}")
 
     combinations_all_ranges = list()
-    for i in range(2, 4):
+    for i in range(_args.low, _args.high + 1):
         combinations = combinations_with_replacement(existing_config_files, i)
         combinations_all_ranges.extend(list(filter(lambda x: len(set(x)) > 1, combinations)))
 
@@ -101,13 +104,13 @@ if "__main__" == __name__:
     run_compute_collection = list()
     for config_filepath in configs_all_ranges:
         _run_compute_template = {
-            "command": ["--compute-all", ],
-            "config_file": None,
+            "command": ["--compute-eval", ],
+            "config_file": config_filepath,
             "refresh_level": "predictions",
             "script_file": "./ensemble.py",
             "script_type": "python"
         }
-        _run_compute_template["config_file"] = config_filepath
+        # _run_compute_template["config_file"] = config_filepath
         run_compute_collection.append(_run_compute_template)
 
     run_template["compute"] = run_compute_collection

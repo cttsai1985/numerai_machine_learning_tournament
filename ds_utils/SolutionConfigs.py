@@ -299,8 +299,8 @@ class EnsembleSolutionConfigs(BaseSolutionConfigs):
         _configs = list()
         for config in self.ensemble_model_configs:
             if not (os.path.exists(config) and os.path.isfile(config)):
-                logging.info(f"configs does not exist: {config}")
-                continue
+                logging.error(f"configs does not exist: {config}")
+                raise FileExistsError(f"configs does not exist: {config}")
 
             _config = SolutionConfigs(
                 root_resource_path=self.root_resource_path, configs_file_path=config,

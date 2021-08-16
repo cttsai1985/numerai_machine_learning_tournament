@@ -40,10 +40,17 @@ def compute(data: pd.Series, func: str, num: int = 10) -> pd.Series:
 
 
 def parse_commandline() -> argparse.Namespace:
+    default_output_pattern: str = "lightgbm_optuna*"
     parser = argparse.ArgumentParser(
         description="execute a series of scripts", add_help=True,
         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    parser.add_argument("--num-rows", type=int, default=100, help="display rows per attributes")
+    parser.add_argument("--num-rows", type=int, default=500, help="display rows per attributes")
+    parser.add_argument(
+        "--output-dir", type=str, default="./", help="output dir")
+    parser.add_argument(
+        "--output-pattern", type=str, default=default_output_pattern, help="destination to move output dirs")
+    parser.add_argument(
+        "--corr-cut-off", type=float, default=.9625, help="destination to move output dirs")
 
     args = parser.parse_args()
     return args
@@ -58,7 +65,7 @@ if "__main__" == __name__:
 
     _args = parse_commandline()
     file_pattern: str = os.path.join(
-        root_resource_path, "lightgbm_optuna*", "validation_model_diagnostics.csv")
+        root_resource_path, _args.output_pattern, "validation_model_diagnostics.csv")
 
     df = dd.read_csv(os.path.join(file_pattern), include_path_column=True).compute()
 
@@ -69,5 +76,13 @@ if "__main__" == __name__:
     ret["target"] = list(map(lambda x: _MetricsFuncMapping.get(x), ret.index.tolist()))
     ret = ret.groupby(col_metric).apply(lambda x: x.reset_index()).reindex(columns=["target", "Spearman", "path"])
     ret = ret.loc[list(_MetricsFuncMapping.keys())]
-    logging.info(f"best models:\n{ret}")
 
+    sub = ret.loc["corr with example predictions", ]
+    mask = sub["Spearman"] < _args.corr_cut_off
+    allow_list = sub["path"].loc[mask].tolist()
+    ret = ret.loc[ret['path'].isin(allow_list)]
+    logging.info(f"best models:\n{ret}")
+    output_filepath = os.path.join(_args.output_dir, "summary.txt")
+    with open(output_filepath, "w") as f:
+        f.write(ret.to_string())
+        logging.info(f"write the ranking results to: {output_filepath}")

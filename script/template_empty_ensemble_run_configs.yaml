@@ -3,10 +3,12 @@ numerapi_configs:
   numerai_secret: numerapiSecret
   model_name: cttsai
 online_diagnostics: null
-offline_diagnostics: null
+offline_diagnostics:
+  - script_type: python
+    script_file: ./offline_model_diagnostics.py
 compute:
   - command:
-      - --compute-all
+      - --compute-eval
     config_file: null
     refresh_level: predictions
     script_file: ./ensemble.py
