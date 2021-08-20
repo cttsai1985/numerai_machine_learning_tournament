@@ -4,7 +4,7 @@ import logging
 import numpy as np
 import tqdm
 import optuna
-from typing import Optional, Callable, Any, Dict, List, Tuple, Union, Generator, Iterator
+from typing import Optional, Callable, Any, Dict, List, Tuple, Set, Union, Generator, Iterator
 from optuna.study import Study
 from optuna.trial import FrozenTrial
 from optuna.integration._lightgbm_tuner.alias import _handling_alias_parameters
@@ -22,16 +22,26 @@ _MIN_TUNER_TREE_DEPTH: int = 4
 
 # Default parameter values described in the official webpage.
 _DEFAULT_LIGHTGBM_PARAMETERS = {
+    "learning_rate": .05,
     "lambda_l1": 1e-3,
     "lambda_l2": 1e-6,
     "num_leaves": 31,
     "feature_fraction": .05,
-    "bagging_fraction": .9,
+    "bagging_fraction": .5,
     "bagging_freq": 1,
     "min_child_samples": 20,
+    "drop_rate": .1,  # DART specific parameters
+    "skip_drop": .5,  # DART specific parameters
+    "max_drop": 50,  # DART specific parameters
+    "top_rate": .2,  # GOSS specific parameters
+    "other_rate": .1,  # GOSS specific parameters
+    "fair_c": 1.,  # fair loss specific parameters, default = 1, and > 0
+    "alpha": .9,  # huber and quantile regression loss specific parameters, default = 0.9 and > 0.
+    "poisson_max_delta_step": .7,  # poisson regression loss specific parameters default = 0.7 and > 0
 }
 
-_SUPPORTED_PARAM_NAMES = [
+_SUPPORTED_PARAMETERS: Optional[List[str]] = None
+_SUPPORTED_PARAMETERS_BASE: List[str] = [
     "learning_rate",
     "lambda_l1",
     "lambda_l2",
@@ -47,26 +57,37 @@ _SUPPORTED_PARAM_NAMES = [
     # "other_rate",  # GOSS specific parameters
     # "fair_c",  # fair loss specific parameters, default = 1, and > 0
     # "alpha",  # huber and quantile regression loss specific parameters, default = 0.9 and > 0.
+    # "poisson_max_delta_step", # poisson regression loss specific parameters default = 0.7 and > 0
 ]
 
-_ADDITIONAL_SUPPORTED_PARAM_NAMES: Dict[str, List[str]] = {
-    ("fair",): ["fair_c"],
-    ("huber", "quantile"): ["alpha"],
-    ("goss",): ["top_rate", "other_rate"],
-    ("dart",): ["drop_rate", "skip_drop", "max_drop"],
+# SUPPORTED PARAMETERS TO ADD
+_ADDITIONAL_SET_OF_SUPPORTED_PARAMETERS: Dict[str, List[str]] = {
+    "fair": ["fair_c"],
+    "huber": ["alpha"],
+    "quantile": ["alpha"],
+    "poisson": ["poisson_max_delta_step"],
+    "goss": ["top_rate", "other_rate"],
+    "dart": ["drop_rate", "skip_drop", "max_drop"],
+}
+# PARAMETERS TO DROP
+_NON_SUPPORTED_PARAMETERS_TO_DROP: Dict[str, List[str]] = {
+    "goss": ["bagging_fraction", "bagging_freq"],
+    "rf": ["learning_rate"],
 }
 
-# TO DROP PARAMETERS
-_PARAMS_TO_CHECK: List[Tuple[str, List[str]]] = [
-    ("goss", ["bagging_fraction", "bagging_freq"]),
-    ("rf", ["learning_rate"])
-]
+_PARAMS_FOR_OBJECTIVE_FUNCTION = {
+    "fair": "fair_c",
+    "huber": "alpha",
+    "quantile": "alpha",
+    "poisson": "poisson_max_delta_step"
+}
 
 # SEARCH RANGE
 _DEFAULT_SEARCH_RANGE: Dict[str, Dict[str, Any]] = {
     # loss function tuning
-    "fair_c": {"discrete": [0.5, 0.75, 1, 1.25, 1.5, 2]},
-    "alpha": {"discrete": [0.5, 0.8, 0.9, 0.95, 1., 2.]},
+    "fair_c": {"high": 2.5, "low": 0.5, "step": 0.5, "fine_step": 0.1, "fine_grid": 2, },
+    "alpha": {"high": 2.5, "low": 0.5, "step": 0.5, "fine_step": 0.1, "fine_grid": 2, },
+    "poisson_max_delta_step": {"high": 1.5, "low": 0.3, "step": 0.4, "fine_step": 0.1, "fine_grid": 2, },
 
     "learning_rate": {"discrete": [.002, .005, .01, .02, .05, .1]},
 
@@ -90,21 +111,35 @@ _DEFAULT_SEARCH_RANGE: Dict[str, Dict[str, Any]] = {
 }
 
 
-def _modify_supported_parameters(param_values: List[Any]) -> List[str]:
-    for k, v in _ADDITIONAL_SUPPORTED_PARAM_NAMES.items():
-        for pv in param_values:
-            if pv not in k:
-                continue
+def _organize_hyper_parameters_for_tuning(params: Dict[str, Any]) -> Dict[str, Any]:
+    params_base = _SUPPORTED_PARAMETERS_BASE.copy()
 
-            _ADDITIONAL_PARAMS = _ADDITIONAL_SUPPORTED_PARAM_NAMES.get(k, list())
-            if not _ADDITIONAL_PARAMS:
-                continue
+    for k, v in _ADDITIONAL_SET_OF_SUPPORTED_PARAMETERS.items():
+        if k not in params.values():
+            continue
 
-            _SUPPORTED_PARAM_NAMES.extend(_ADDITIONAL_PARAMS)
-            logging.info(f"Adding Light GBM parameters: {', '.join(_ADDITIONAL_PARAMS)}")
+        logging.info(f"add extra {v} hyper-parameter for {k}")
+        params_base.extend(v)
 
-    logging.info(f"Allowed to tuning Light GBM parameters: {_SUPPORTED_PARAM_NAMES}")
-    return _SUPPORTED_PARAM_NAMES
+    for k, v in _NON_SUPPORTED_PARAMETERS_TO_DROP.items():
+        if k not in params.values():
+            continue
+
+        logging.info(f"remove {v} hyper-parameter for not allowed in {k}")
+        for vv in v:
+            params_base.remove(vv)
+            if vv in params.keys():
+                del params[vv]
+
+    for k in params_base:
+        if k in params.keys():
+            continue
+
+        params[k] = _DEFAULT_LIGHTGBM_PARAMETERS.get(k)
+
+    globals()["_SUPPORTED_PARAMETERS"] = params_base[:]
+    logging.info(f"Allowed to tuning Light GBM parameters: {_SUPPORTED_PARAMETERS}")
+    return params
 
 
 def min_num_leave_by_depth(tree_depth: int):
@@ -129,9 +164,10 @@ class _CustomOptunaObjectiveCV(_OptunaObjectiveCV):
         self._param_range: Dict[str, Dict[str, float]] = param_range
 
     def _check_target_names_supported(self) -> None:
-        not_supported_parameters = list(filter(lambda x: x not in _SUPPORTED_PARAM_NAMES, self.target_param_names))
+        not_supported_parameters = list(filter(lambda x: x not in _SUPPORTED_PARAMETERS, self.target_param_names))
         if not_supported_parameters:
-            raise NotImplementedError(f"Parameter `{', '.join(not_supported_parameters)}` is not supported for tuning.")
+            raise NotImplementedError(
+                f'Parameter `{", ".join(not_supported_parameters)}` is not supported for tuning.')
 
     def _preprocess(self, trial: optuna.trial.Trial) -> None:
         if self.pbar is not None:
@@ -169,11 +205,13 @@ class _CustomOptunaObjectiveCV(_OptunaObjectiveCV):
         self._suggest_categorical("top_rate", trial)
         self._suggest_categorical("other_rate", trial)
         # `GridSampler` is used for fair loss tuning.
-        # self._suggest_categorical("fair_c", trial)
-        self._suggest_float("fair_c", trial, round_digits=3)
+        self._suggest_categorical("fair_c", trial)
+        # self._suggest_float("fair_c", trial, round_digits=3)
         # `GridSampler` is used for huber loss tuning.
-        # self._suggest_categorical("alpha", trial)
-        self._suggest_float("alpha", trial, round_digits=3)
+        # self._suggest_float("alpha", trial, round_digits=3)
+        self._suggest_categorical("alpha", trial)
+        # self._suggest_float("poisson_max_delta_step", trial, round_digits=3)
+        self._suggest_categorical("poisson_max_delta_step", trial)
 
     def _suggest_float(
             self, param_name: str, trial: optuna.trial.Trial, round_digits: Optional[float] = None) -> None:
@@ -181,9 +219,9 @@ class _CustomOptunaObjectiveCV(_OptunaObjectiveCV):
             return
 
         param = self._param_range[param_name]
-        suggestion = min(
-            trial.suggest_float(param_name, param["low"], param["high"] + _EPS, log=param.get("log", False)),
-            param["high"])
+        _low = param["low"]
+        _high = param["high"]
+        suggestion = min(trial.suggest_float(param_name, _low, _high + _EPS, log=param.get("log", False)), _high)
         if round_digits:
             suggestion = np.round(suggestion, round_digits)
 
@@ -241,40 +279,104 @@ class OptunaLightGBMTunerCV(LightGBMTunerCV):
         if isinstance(param_distributions, dict):
             _params.update(param_distributions)
 
-        logging.info(f"optuna parameter search range: {_params}")
-        self._param_range: Dict[str, Dict[str, Any]] = _params  # TODO: Load customized
+        self._param_range: Dict[str, Dict[str, Any]] = _params
+        logging.info(f"parameters search range by Optuna:")
+        for k, v in self._param_range.items():
+            logging.info(f"parameter: {k}, search range: {v}")
 
-    def _tune_discrete_with_grid_template(
-            self, param_name: str, tuning_task_name: str, param_values_in_range: Optional[List[Any]] = None):
-        if param_values_in_range is None:
-            param = self._param_range[param_name]
-            param_values_in_range = param["discrete"]
+        self._params_tuned: Optional[Dict[str, bool]] = None
 
-        sampler = optuna.samplers.GridSampler({param_name: param_values_in_range})
-        self._tune_params([param_name], len(param_values_in_range), sampler, tuning_task_name)
-
-    def _tune_float_with_grid_template(self, task_name: str, param_name: str, param_search_range: List[float]):
-        sampler = optuna.samplers.GridSampler({param_name: param_search_range})
-        self._tune_params([param_name], len(param_search_range), sampler, task_name)
+    @staticmethod
+    def _get_param_from_objective(objective_name: str) -> str:
+        return _PARAMS_FOR_OBJECTIVE_FUNCTION.get(objective_name, None)
 
     @staticmethod
     def _create_grid_search_range(
             low: float, high: float, step: float, round_digits: Optional[int] = None) -> List[float]:
-        param_range = np.linspace(low, high, int(np.round((high - low) / step)) + 1)
+        param_range = np.linspace(low, high + _EPS, int(np.round((high - low) / step)) + 1)
 
         if round_digits is not None:
             param_range = np.round(param_range, round_digits)
 
         return param_range.tolist()
 
-    @staticmethod
-    def _get_param_from_objective(objective_name: str) -> str:
-        _objective = {"fair": "fair_c", "huber": "alpha", "quantile": "alpha", }
-        return _objective.get(objective_name, None)
+    def _tune_with_grid_template(
+            self, task_name: str, param_name: str, param_search_range: Optional[List[Any]] = None):
+        # three scenarios
+        # 1) supply param_search_range
+        # 2) a list of discrete
+        # 3) a set of low, high, step
+        _param_search_range: Optional[List[Any]] = None
+        _discrete_lookup_key: str = "discrete"
+        _range_lookup_key: List[str] = ["high", "low", "step"]
+        param = self._param_range[param_name]
+        go_discrete: bool = _discrete_lookup_key in param.keys()
+        go_range: bool = set(_range_lookup_key).issubset(set(param.keys()))
+        if param_search_range is not None:
+            _param_search_range = param_search_range
+            logging.info(f"create search range from predefined: {_param_search_range}")
+            if go_discrete:
+                self._param_range[param_name][_discrete_lookup_key] = param_search_range
+            if go_range:
+                pass
 
-    @staticmethod
-    def _filter_out_of_range(param_search_range: List[float], param: Dict[str, float]) -> List[float]:
-        return list(filter(lambda val: param["high"] >= val >= param["low"], param_search_range))
+        elif param_search_range is None and go_discrete:
+            _param_search_range = param[_discrete_lookup_key]
+            logging.info(f"create search range from discrete key: {_param_search_range}")
+
+        elif param_search_range is None and go_range:
+            _param_search_range = self._create_grid_search_range(
+                low=param["low"], high=param["high"], step=param["step"], round_digits=3)
+            logging.info(f"create search range from high, low, step: {_param_search_range}")
+
+        sampler = optuna.samplers.GridSampler({param_name: _param_search_range})
+        self._tune_params([param_name], len(_param_search_range), sampler, task_name)
+
+    def _refine_tune_float_with_grid_sampler(self, param_name: str, task_name: str):
+        param_range = self._param_range[param_name]
+        range_high: Optional[float] = param_range.get("high")
+        range_low: Optional[float] = param_range.get("low")
+        if not range_high and not range_low:
+            if "discrete" in param_range.keys():
+                _param_search_range = param_range["discrete"]
+                range_high: float = max(_param_search_range)
+                range_low: float = min(_param_search_range)
+
+        fine_step: float = param_range.get("fine_step", .1)
+        fine_grid: int = param_range.get("fine_grid", 2)
+        fine_range: float = fine_step * fine_grid
+
+        current_best_params = self.best_params[param_name]
+        param_search_range = self._create_grid_search_range(
+            current_best_params - fine_range, current_best_params + fine_range, step=fine_step, round_digits=3)
+        param_search_range = list(filter(lambda val: range_high >= val >= range_low, param_search_range))
+        self._tune_with_grid_template(task_name, param_name=param_name, param_search_range=param_search_range)
+
+    def tune_learning_rate(self, task_name: str = "learning_rate", **kwargs) -> bool:
+        # TODO: find the correct condition for skip
+        if "rf" in self.lgbm_params.values():
+            return False
+
+        self._tune_with_grid_template(task_name=task_name, param_name="learning_rate")
+        return True
+
+    def tune_goss_parameters(self, n_trials: int = 20, task_name: str = "goss tuning") -> bool:
+        _params: List[str] = ["top_rate", "other_rate"] + ["learning_rate"]
+        if not set(_params).issubset(set(self.lgbm_params.keys())):
+            logging.info(f"skip goss tuning")
+            return False
+
+        self._tune_with_tpe_sampler(_params, n_trials=n_trials, task_name=task_name)
+        return True
+
+    def tune_dart_parameters(self, n_trials: int = 20, task_name: str = "dart tuning") -> bool:
+        _params: List[str] = ["drop_rate", "skip_drop", "max_drop"] + ["learning_rate"]
+        if not set(_params).issubset(set(self.lgbm_params.keys())):
+            logging.info(f"skip dart tuning")
+            return False
+
+        self._tune_with_tpe_sampler(_params, n_trials=n_trials, task_name=task_name)
+        return True
 
     def tune_loss_function(self, **kwargs) -> bool:
         _param = self.lgbm_params.get("objective")
@@ -282,81 +384,38 @@ class OptunaLightGBMTunerCV(LightGBMTunerCV):
         if obj_param_name is None:
             return False
 
-        param = self._param_range[obj_param_name]
-        param_search_range = self._create_grid_search_range(param["low"], param["high"], step=param["step"])
-        self._tune_float_with_grid_template(
-            f"loss function tuning {obj_param_name}", param_name=obj_param_name, param_search_range=param_search_range)
+        self._tune_with_grid_template(task_name=f"loss function tuning {obj_param_name}", param_name=obj_param_name)
         return True
 
-    def tune_loss_function_stage2(self, task_name: str = "tune_loss_function_stage2", **kwargs) -> bool:
-        _param = self.lgbm_params.get("objective")
-        obj_param_name = self._get_param_from_objective(_param)
-        if obj_param_name is None:
-            return False
+    def tune_feature_fraction(
+            self, task_name: str = "feature_fraction_stage1", param_name: str = "feature_fraction", **kwargs) -> None:
+        self._tune_with_grid_template(task_name=f"tune {task_name}", param_name=param_name)
 
-        current_best_params = self.best_params[obj_param_name]
-        param_search_range = self._create_grid_search_range(
-            current_best_params - .2, current_best_params + .2, step=.1, round_digits=3)
-        param_search_range = self._filter_out_of_range(param_search_range, param=self._param_range[obj_param_name])
-        self._tune_float_with_grid_template(
-            task_name, param_name=obj_param_name, param_search_range=param_search_range)
+    def tune_feature_fraction_stage2(
+            self, task_name: str = "feature_fraction_stage2", param_name: str = "feature_fraction", **kwargs) -> None:
+        self._refine_tune_float_with_grid_sampler(task_name=task_name, param_name=param_name)
 
-    def tune_goss_parameters(self, n_trials: int = 5, task_name: str = "goss tuning") -> bool:
-        if "goss" not in self.lgbm_params.values():
-            return False
-
-        self._tune_params(["top_rate", "other_rate"], n_trials, optuna.samplers.TPESampler(), task_name)
-        return True
-
-    def tune_dart_parameters(self, n_trials: int = 20, task_name: str = "dart tuning") -> bool:
-        if "dart" not in self.lgbm_params.values():
-            return False
-
-        self._tune_params(["drop_rate", "skip_drop", "max_drop"], n_trials, optuna.samplers.TPESampler(), task_name)
-        return True
-
-    def tune_feature_fraction(self, task_name: str = "feature_fraction", **kwargs) -> None:
-        param_name = "feature_fraction"
-        param = self._param_range[param_name]
-        param_search_range = self._create_grid_search_range(param["low"], param["high"], step=param["step"])
-        self._tune_float_with_grid_template(
-            task_name, param_name=param_name, param_search_range=param_search_range)
-
-    def tune_feature_fraction_stage2(self, task_name: str = "feature_fraction_stage2", **kwargs) -> None:
-        param_name: str = "feature_fraction"
-        best_feature_fraction = self.best_params[param_name]
-        param_search_range = self._create_grid_search_range(
-            best_feature_fraction - .03, best_feature_fraction + .03, step=.015, round_digits=3)
-
-        param_search_range = self._filter_out_of_range(param_search_range, param=self._param_range[param_name])
-        self._tune_float_with_grid_template(
-            task_name, param_name=param_name, param_search_range=param_search_range)
+    def _tune_with_tpe_sampler(self, params: List[str], n_trials: int = 20, task_name: str = "num_leaves"):
+        self._tune_params(params, n_trials, optuna.samplers.TPESampler(), task_name, )
 
     def tune_num_leaves(self, n_trials: int = 20, task_name: str = "num_leaves") -> None:
-        self._tune_params(["num_leaves"], n_trials, optuna.samplers.TPESampler(), task_name)
+        self._tune_with_tpe_sampler(["num_leaves"], n_trials=n_trials, task_name=task_name)
 
     def tune_regularization_factors(self, n_trials: int = 20, task_name: str = "regularization_factors") -> None:
-        self._tune_params(
-            ["lambda_l1", "lambda_l2"], n_trials, optuna.samplers.TPESampler(), task_name, )
+        self._tune_with_tpe_sampler(["lambda_l1", "lambda_l2"], n_trials=n_trials, task_name=task_name)
 
-    def tune_min_data_in_leaf(self, task_name: str = "min_data_in_leaf", **kwargs) -> None:
-        self._tune_discrete_with_grid_template(param_name="min_child_samples", tuning_task_name=task_name)
+    def tune_min_data_in_leaf(
+            self, task_name: str = "min_data_in_leaf", param_name: str = "min_child_samples", **kwargs) -> None:
+        self._tune_with_grid_template(task_name=f"tune {task_name}", param_name=param_name)
 
-    def tune_bagging(
-            self, n_trials: int = 10, task_name: str = "bagging", **kwargs) -> bool:
-        # TODO: find the correct condition for skip
-        if "goss" in self.lgbm_params.values():
+    def tune_bagging(self, n_trials: int = 10, task_name: str = "bagging", **kwargs) -> bool:
+        _params: List[str] = ["bagging_fraction", "bagging_freq"]
+
+        if set(_params) != (set(self.lgbm_params.keys()) & set(_params)):
+            logging.info(f"skip bagging tuning")
             return False
 
-        self._tune_params(["bagging_fraction", "bagging_freq"], n_trials, optuna.samplers.TPESampler(), task_name)
-        return True
-
-    def tune_learning_rate(self, task_name: str = "learning_rate", **kwargs) -> bool:
-        # TODO: find the correct condition for skip
-        if "rf" in self.lgbm_params.values():
-            return False
-
-        self._tune_discrete_with_grid_template(param_name="learning_rate", tuning_task_name=task_name)
+        self._tune_params(_params, n_trials, optuna.samplers.TPESampler(), task_name)
         return True
 
     def _create_objective(
@@ -389,21 +448,17 @@ class OptunaLightGBMTunerCV(LightGBMTunerCV):
         if status:
             logging.info(f"current best after tune_loss_function: {self.best_params}")
 
-        status = self.tune_learning_rate()
-        if status:
-            logging.info(f"current best after tune_learning_rate: {self.best_params}")
-
-        status = self.tune_loss_function_stage2()
-        if status:
-            logging.info(f"current best after tune_loss_function_stage2: {self.best_params}")
-
-        status = self.tune_goss_parameters(n_trials=25)
+        status_goss = self.tune_goss_parameters(n_trials=25)
         if status:
             logging.info(f"current best after tune_goss_parameters: {self.best_params}")
 
-        status = self.tune_dart_parameters(n_trials=25)
-        if status:
+        status_dart = self.tune_dart_parameters(n_trials=25)
+        if status_dart:
             logging.info(f"current best after tune_dart_parameters: {self.best_params}")
+
+        if not (status_dart or status_goss):
+            self.tune_learning_rate()
+            logging.info(f"current best after tune_learning_rate: {self.best_params}")
 
         self.tune_feature_fraction()
         logging.info(f"current best after tune_feature_fraction: {self.best_params}")
@@ -441,6 +496,8 @@ class OptunaLightGBMTunerCV(LightGBMTunerCV):
                 logging.info(f"remove {k} for safely run {param_value}")
                 del params[k]
 
+        for k, v in params.items():
+            logging.info(f"default value for {k}: {v} in search")
         return params
 
     @property
@@ -451,11 +508,7 @@ class OptunaLightGBMTunerCV(LightGBMTunerCV):
 
         except ValueError:  # TODO: parameterize this
             # Return the default score because no trials have completed.
-            params = copy.deepcopy(_DEFAULT_LIGHTGBM_PARAMETERS)
-            # self.lgbm_params may contain parameters given by users.
-            params.update(self.lgbm_params)
-            for params_to_check, v in _PARAMS_TO_CHECK:
-                params = self._drop_ineffective_params(params, params_to_check, params_to_drop=v)
 
-            _modify_supported_parameters(list(self.lgbm_params.values()))
+            params = _organize_hyper_parameters_for_tuning(self.lgbm_params)
+            self._params_tuned = {k: False for k in params.keys()}
             return params
