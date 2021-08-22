@@ -20,7 +20,7 @@ _MetricsFuncMapping = {
 
     "validationStd": "nsmallest",
     "validationMaxFeatureExposure": "nsmallest",
-    "validationMaxDrawdown": "nsmallest",
+    "validationMaxDrawdown": "nlargest",
 
     "validationCorrPlusMmcSharpe": "nlargest",
     "validationMmcMean": "nlargest",
