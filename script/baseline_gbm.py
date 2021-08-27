@@ -93,17 +93,43 @@ if "__main__" == __name__:
     _args = parse_commandline()
     main(_args)
     # TODO: P0
-    # TODO: persistent save/load yaml
-    # TODO: force to run low sampling ratio to replace era boosting
-    # TODO: investigate mmc issue
-    # TODO: load hpo search range
-    # TODO: choose subset training set
-    # TODO: fine tune model
-    # TODO: add select era for model analytics
+    # TODO: Modeling
+    # cross-entropy application: xentropy (cross_entropy), xentlambda (cross_entropy_lambda)
+    # to replace era boosting by using GOSS or force to run low sampling ratio
+    # choose subset of training set for training
+    # fine tune model using recent data, incremental learning
+    # adding more parameters to tune
+    # sklearn stacking: StackingClassifier
 
-    # TODO: building
-    # TODO: model helper
-    # TODO: parameterize script, half way
+    # TODO: P0
+    # Feature Engineering
+    # stats features on row-levels: skew, kurt, mean, std, frequency
+    # sparse transform: tree-embedding for deep features interactions
+    # dimensionality reduction by change of basis: PCA, Kernel-PCA, tSVD, UMAP
+    # dimensionality reduction by clustering, distance matrix: correlations, normalized mutual information
 
-    # TODO: experimenting
-    # TODO: multi class approach
+    # TODO: P0
+    # TODO: Monitoring
+    # compute and save feature importance stats
+
+    # TODO: P1
+    # TODO: Experimenting
+    # multi class approach
+    # ranker approach
+    # compute AUC-ROC on multi-labels classification (macro or micro)
+    # dynamic parameters such as learning_rate using call back
+    # categorical_feature in LightGBM, unordered categorical
+
+    # TODO: P2
+    # TODO: Monitoring
+    # investigate mmc issue
+    # add select era for model analytics
+
+    # TODO: P2
+    # TODO: Utilities
+    # persistent save/load yaml
+
+    # TODO: long-term
+    # stationary features (specific goals needed here)
+    # parameterize script (specific goals needed here)
+    # model helper (specific goals needed here)
