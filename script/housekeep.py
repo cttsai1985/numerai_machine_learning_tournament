@@ -6,6 +6,7 @@ from pathlib import Path
 import pandas as pd
 import pdb
 from glob import glob
+from typing import Tuple, Dict, List
 from dask import dataframe as dd
 import shutil
 
@@ -21,6 +22,7 @@ def parse_commandline() -> argparse.Namespace:
     default_destination_configs: str = "../configs/not_active/"
     default_configs_pattern: str = "../configs/configs_baseline_*.yaml"
     default_output_pattern: str = "lightgbm_optuna*"
+    default_output_file: str = "model.pkl"
     parser = argparse.ArgumentParser(
         description="execute a series of scripts", add_help=True,
         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
@@ -33,10 +35,24 @@ def parse_commandline() -> argparse.Namespace:
         "--configs-pattern", type=str, default=default_configs_pattern, help="default configs patten")
     parser.add_argument(
         "--output-pattern", type=str, default=default_output_pattern, help="default output patten")
+    parser.add_argument(
+        "--output-file-lookup", type=str, default=default_output_file, help="default output file to lookup")
     parser.add_argument("--num-rows", type=int, default=100, help="display rows per attributes")
 
     args = parser.parse_args()
     return args
+
+
+def process_file_path(file_path: str) -> Tuple[Dict[str, str], Dict[str, str]]:
+    logging.info(f"process pattern as: {file_path}")
+    original_path: List[str] = list(map(lambda x: str(Path(x).parent.absolute()), glob(file_path)))
+    path_df = pd.DataFrame({"original_path": original_path})
+    path_df["path"] = path_df["original_path"].apply(lambda x: Path(x).parts[-1])
+    path_df['configs_path'] = path_df["original_path"].map(config_file_output_dict)
+    path_df['configs_available'] = path_df["original_path"].isin(active_output_dirs)
+    output_dirs_to_move = path_df.loc[~path_df['configs_available'], 'original_path'].tolist()
+    output_dirs_to_keep = path_df.loc[path_df['configs_available'], 'original_path'].tolist()
+    return output_dirs_to_move, output_dirs_to_keep
 
 
 if "__main__" == __name__:
@@ -64,25 +80,16 @@ if "__main__" == __name__:
     non_active_output_dirs = list(filter(lambda x: ~os.path.exists(x) or ~os.path.isdir(x), output_dirs))
 
     file_pattern: str = os.path.join(
-        root_resource_path, _args.output_pattern, "validation_model_diagnostics.csv")
+        root_resource_path, _args.output_pattern, _args.output_file_lookup)
 
-    df = dd.read_csv(os.path.join(file_pattern), include_path_column=True).compute()
-
-    # original df
-    original_path = df["path"].apply(lambda x: str(Path(x).parent.absolute())).unique()
-    path_df = pd.DataFrame({"original_path": original_path})
-    path_df["path"] = path_df["original_path"].apply(lambda x: Path(x).parts[-1])
-    path_df['configs_path'] = path_df["original_path"].map(config_file_output_dict)
-    path_df['configs_available'] = path_df["original_path"].isin(active_output_dirs)
-    output_dirs_to_move = path_df.loc[~path_df['configs_available'], 'original_path'].tolist()
-    output_dirs_to_keep = path_df.loc[path_df['configs_available'], 'original_path'].tolist()
-
-    logging.info(f"move {len(output_dirs_to_move)} output directories to {_args.destination_output}")
-    for dir_to_move in output_dirs_to_move:
+    _output_dirs_to_move, _output_dirs_to_keep = process_file_path(file_pattern)
+    logging.info(f"move {len(_output_dirs_to_move)} output directories to {_args.destination_output}")
+    for dir_to_move in _output_dirs_to_move:
         if _args.dry_run:
             logging.info(f"DRY RUN: moving dir {dir_to_move} to {_args.destination_output}")
             continue
 
+        # noinspection PyBroadException
         try:
             shutil.move(dir_to_move, _args.destination_output)
             logging.info(f"moving dir {dir_to_move} to {_args.destination_output}")
@@ -90,16 +97,17 @@ if "__main__" == __name__:
         except Exception:
             logging.error(f"failed to moving dir {dir_to_move} to {_args.destination_output}")
 
-    config_files_to_move = [v for k, v in config_file_output_dict.items() if k not in output_dirs_to_keep]
+    config_files_to_move = [v for k, v in config_file_output_dict.items() if k not in _output_dirs_to_keep]
     logging.info(f"move {len(config_files_to_move)} configs file to {_args.destination_configs}")
     for config_to_move in config_files_to_move:
         if _args.dry_run:
             logging.info(f"DRY RUN: moving dir {config_to_move} to {_args.destination_configs}")
             continue
 
+        # noinspection PyBroadException
         try:
             shutil.move(config_to_move, _args.destination_configs)
             logging.info(f"moving dir {config_to_move} to {_args.destination_configs}")
 
         except Exception:
-            logging.error(f"failed to moving dir {config_to_move} to {_args.destination_configs}")
+            logging.error(f"failed to moving file {config_to_move} to {_args.destination_configs}")
