@@ -47,7 +47,7 @@ def _target_dataframe(
         prediction_filepath: str, example_filepath: str, use_dask: bool = False) -> Union[pd.DataFrame, dd.DataFrame]:
     df_target = _read_dataframe(prediction_filepath, use_dask=use_dask)
     example = _read_dataframe(example_filepath, use_dask=use_dask)
-    return df_target.join(example["prediction"], how="left")
+    return df_target.join(example["prediction"].rename("example_prediction"), how="left")
 
 
 def compute_sharpe(filepath: str, columns: Optional[List[str]] = None, ) -> pd.Series:
@@ -94,13 +94,16 @@ def compute_fnc(filepath: str, columns: Optional[List[str]] = None, ) -> pd.Seri
     return df_corr.mean().rename("feature neutralized corr mean")
 
 
-def _compute_mmc(df: pd.DataFrame, col_group: str = "era", col_example: str = "prediction") -> pd.Series:
-    return df.groupby(col_group).apply(lambda x: compute_single_mmc(x, col_example=col_example)).rename("MMC")
+def _compute_mmc(
+        df: pd.DataFrame, col_group: str = "era", col_example: str = "prediction",
+        col_submit: str = "yhat") -> pd.Series:
+    return df.groupby(col_group).apply(
+        lambda x: compute_single_mmc(x, col_example=col_example, col_submit=col_submit)).rename("MMC")
 
 
 def compute_mmc(prediction_filepath: str, example_filepath: str) -> pd.Series:
     df_target = _target_dataframe(prediction_filepath, example_filepath)
-    return _compute_mmc(df_target, col_group="era", col_example="prediction")
+    return _compute_mmc(df_target, col_group="era", col_example="example_prediction", col_submit="prediction")
 
 
 def compute_mmc_mean(
@@ -112,16 +115,16 @@ def compute_mmc_mean(
 def compute_corr_with_example(prediction_filepath: str, example_filepath: str) -> pd.Series:
     df_target = _target_dataframe(prediction_filepath, example_filepath)
     corr_dict = {"Spearman": spearman_corr, "Pearson": pearson_corr}
-    return df_target.groupby("era").apply(
-        lambda x: pd.Series({k: v(x["prediction"], x["yhat"]) for k, v in corr_dict.items()})).mean().rename(
-        "corr with example predictions")
+    results = df_target.groupby("era").apply(
+        lambda x: pd.Series({k: v(x["example_prediction"], x["prediction"]) for k, v in corr_dict.items()}))
+    return results.mean().rename("corr with example predictions")
 
 
 def compute_corr_plus_mmc(
         corr_filepath: str, prediction_filepath: str, example_filepath: str,
         columns: Optional[List[str]] = None, ) -> pd.Series:
     mmc = _compute_mmc(
-        _target_dataframe(prediction_filepath, example_filepath), col_group="era", col_example="prediction")
+        _target_dataframe(prediction_filepath, example_filepath), col_group="era", col_example="example_prediction")
     df_corr_plus_mmc = _read_dataframe(corr_filepath, columns=columns)
     for i in columns:
         df_corr_plus_mmc[i] += mmc
