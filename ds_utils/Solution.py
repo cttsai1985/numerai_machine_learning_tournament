@@ -14,6 +14,7 @@ from sklearn.model_selection import BaseCrossValidator
 from sklearn.base import BaseEstimator
 
 from .DefaultConfigs import RefreshLevel
+from .Utils import scale_uniform
 
 
 class BaseSolution:
@@ -213,7 +214,15 @@ class Solution(BaseSolution):
 
         eval_type: str = "validation"
         ret = valid_data.evaluate(yhat=yhat, scoring_func=self.scoring_func)
-        self.valid_predictions, self.valid_score_all, self.valid_score_split = ret
+        valid_predictions, self.valid_score_all, self.valid_score_split = ret
+
+        era = valid_data.groups_for_eval_
+        if not self.data_manager.has_cast_mapping("index2label"):
+            logging.info(f"rank predictions from regression model")
+            valid_predictions["prediction"] = valid_predictions.groupby(
+                era.name)["yhat"].apply(lambda x: scale_uniform(x))
+        self.valid_predictions = valid_predictions
+
         self.valid_predictions.to_parquet(os.path.join(self.working_dir, f"{eval_type}_predictions.parquet"))
         self.valid_score_split.to_parquet(os.path.join(self.working_dir, f"{eval_type}_score_split.parquet"))
         self.valid_score_all.to_parquet(os.path.join(self.working_dir, f"{eval_type}_score_all.parquet"))
@@ -240,7 +249,7 @@ class Solution(BaseSolution):
         ret["yhat"] = self._cast_for_classifier_predict(ret["yhat"])
         if not self.data_manager.has_cast_mapping("index2label"):
             logging.info(f"rank predictions from regression model")
-            ret["prediction"] = ret.groupby(era.name)["yhat"].rank(method="dense", ascending=True, pct=True)
+            ret["prediction"] = ret.groupby(era.name)["yhat"].apply(lambda x: scale_uniform(x))
 
         ret.to_parquet(os.path.join(self.working_dir, f"{data_type}_predictions.parquet"))
         ret.reindex(columns=["id", "prediction"]).to_csv(
@@ -301,7 +310,7 @@ class EnsembleSolution(BaseSolution):
                 continue
 
             df = pd.read_parquet(file_path)
-            df["yhat"] = df.groupby(groupby_col)["yhat"].rank(method="dense", ascending=True, pct=True)
+            df["yhat"] = df.groupby(groupby_col)["yhat"].apply(lambda x: scale_uniform(x))
             predictions.append(df)
 
         if not predictions:
@@ -341,7 +350,7 @@ class EnsembleSolution(BaseSolution):
         if ret.empty:
             return self
 
-        ret["yhat"] = ret.groupby(era.name)["yhat"].rank(method="dense", ascending=True, pct=True)
+        ret["yhat"] = ret.groupby(era.name)["yhat"].apply(lambda x: scale_uniform(x))
         yhat = ret["yhat"]
         ret = valid_data.evaluate(yhat=yhat, scoring_func=self.scoring_func)
 
@@ -368,7 +377,7 @@ class EnsembleSolution(BaseSolution):
 
         if not self.data_manager.has_cast_mapping("index2label"):
             logging.info(f"rank predictions from regression model")
-            ret["prediction"] = ret.groupby(era.name)["yhat"].rank(method="dense", ascending=True, pct=True)
+            ret["prediction"] = ret.groupby(era.name)["yhat"].apply(lambda x: scale_uniform(x))
 
         ret.to_parquet(os.path.join(self.working_dir, f"{data_type}_predictions.parquet"))
         ret.reindex(columns=["id", "prediction"]).to_csv(
