@@ -441,6 +441,9 @@ class OptunaLightGBMTunerCV(LightGBMTunerCV):
         # Handling aliases.
         _handling_alias_parameters(self.lgbm_params)
 
+        # to initialize params to tune
+        self.best_params
+
         # Sampling.
         self.sample_train_set()
 
