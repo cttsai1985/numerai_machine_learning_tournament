@@ -17,6 +17,10 @@ def scale_uniform(series: pd.Series, middle: float = 0.5) -> pd.Series:
     return (series.rank(pct=True, method="first") - middle) / series.shape[0]
 
 
+def pct_ranked(series: Union[pd.Series, pd.DataFrame]) -> Union[pd.Series, pd.DataFrame]:
+    return series.rank(method="dense", ascending=True, pct=True)
+
+
 def auto_corr_penalty(x: pd.Series, lag: int = 1) -> float:
     n = x.shape[0]
     p = np.abs(x.autocorr(lag=lag))
