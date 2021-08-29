@@ -131,3 +131,5 @@ if "__main__" == __name__:
         ds_utils.Utils.save_yaml_configs(run_template, _args.run_configs_filepath)
     else:
         logging.info(f"dry run to write to: {_args.run_configs_filepath}:\n{run_template}")
+
+    logging.info(f"available configs after filtering {_args.max_model_weight}: {len(combinations_all_ranges)}")
