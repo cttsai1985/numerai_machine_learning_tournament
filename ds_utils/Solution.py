@@ -88,6 +88,11 @@ class BaseSolution:
     def from_configs(cls, args: Namespace, configs: "SolutionConfigs", output_data_path: str, **kwargs):
         raise NotImplementedError
 
+    def create_submission_csv(
+            self, results: pd.DataFrame, data_type: str, columns: List[str] = ["id", "prediction"]):
+        results.reindex(columns=columns).to_csv(
+            os.path.join(self.working_dir, f"{data_type}_predictions.csv"), index=False)
+
 
 class Solution(BaseSolution):
     def __init__(
@@ -252,8 +257,7 @@ class Solution(BaseSolution):
             ret["prediction"] = ret.groupby(era.name)["yhat"].apply(lambda x: pct_ranked(x))
 
         ret.to_parquet(os.path.join(self.working_dir, f"{data_type}_predictions.parquet"))
-        ret.reindex(columns=["id", "prediction"]).to_csv(
-            os.path.join(self.working_dir, f"{data_type}_predictions.csv"), index=False)
+        self.create_submission_csv(results=ret, data_type=data_type, columns=["id", "prediction"])
         return self
 
     def evaluate(self, train_data_type: str = "training", valid_data_type: str = "validation", ):
@@ -383,8 +387,7 @@ class EnsembleSolution(BaseSolution):
             ret["prediction"] = ret.groupby(era.name)["yhat"].apply(lambda x: pct_ranked(x))
 
         ret.to_parquet(os.path.join(self.working_dir, f"{data_type}_predictions.parquet"))
-        ret.reindex(columns=["id", "prediction"]).to_csv(
-            os.path.join(self.working_dir, f"{data_type}_predictions.csv"), index=False)
+        self.create_submission_csv(results=ret, data_type=data_type, columns=["id", "prediction"])
         return self
 
     def evaluate(self, train_data_type: str = "training", valid_data_type: str = "validation", ):
