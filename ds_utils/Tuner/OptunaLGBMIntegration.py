@@ -26,6 +26,7 @@ _DEFAULT_LIGHTGBM_PARAMETERS = {
     "lambda_l1": 1e-3,
     "lambda_l2": 1e-6,
     "num_leaves": 31,
+    "max_depth": _DEFAULT_TUNER_TREE_DEPTH,  #
     "feature_fraction": .05,
     "bagging_fraction": .5,
     "bagging_freq": 1,
@@ -46,6 +47,7 @@ _SUPPORTED_PARAMETERS_BASE: List[str] = [
     "lambda_l1",
     "lambda_l2",
     "num_leaves",
+    "max_depth",
     "feature_fraction",
     "bagging_fraction",
     "bagging_freq",
@@ -174,15 +176,14 @@ class _CustomOptunaObjectiveCV(_OptunaObjectiveCV):
             self.pbar.set_description(self.pbar_fmt.format(self.step_name, self.best_score))
 
         if "num_leaves" in self.target_param_names:
-            tree_depth = max(
-                _MIN_TUNER_TREE_DEPTH, self.lgbm_params.get("max_depth", _DEFAULT_TUNER_TREE_DEPTH))
-            # min tree_depth >= 4
-            margin = int(np.log(tree_depth ** 2))
-            min_num_leaves = min_num_leave_by_depth(min(_MIN_TUNER_TREE_DEPTH, tree_depth)) + margin
-            max_num_leaves = min(
-                max_num_leave_by_depth(min(tree_depth, 7)),
-                sum(map(max_num_leave_by_depth, range(tree_depth - 3, tree_depth))))
-            logging.info(f"num_leaves for max_depth {tree_depth}: in ({min_num_leaves}, {max_num_leaves})")
+            max_depth = self.lgbm_params.get("max_depth", _DEFAULT_TUNER_TREE_DEPTH)
+            ref_tree_depth = max(_MIN_TUNER_TREE_DEPTH, max_depth)
+            margin = int(np.log(ref_tree_depth ** 2))
+            min_num_leaves = min_num_leave_by_depth(ref_tree_depth) + margin
+            max_leaves = min(max_num_leave_by_depth(max_depth), max_num_leave_by_depth(_DEFAULT_TUNER_TREE_DEPTH - 1))
+            max_num_leaves = max(filter(
+                lambda x: min_num_leaves < x < max_leaves, [min_num_leaves + i * margin for i in range(1, 11)]))
+            logging.info(f"num_leaves for max_depth {ref_tree_depth}: in ({min_num_leaves}, {max_num_leaves})")
             self.lgbm_params["num_leaves"] = int(trial.suggest_loguniform("num_leaves", min_num_leaves, max_num_leaves))
 
         self._suggest_float("lambda_l1", trial, round_digits=3)
