@@ -37,7 +37,7 @@ def parse_commandline() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="execute a series of scripts", add_help=True,
         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    parser.add_argument("--num-rows", type=int, default=5, help="display rows per attributes")
+    parser.add_argument("--num-rows", type=int, default=25, help="display rows per attributes")
     parser.add_argument("--num-round", type=int, default=None, help="the specific round instead of the live round.")
     args = parser.parse_args()
     return args
