@@ -188,7 +188,8 @@ class Solution(BaseSolution):
             data_type = "training"
 
         if self.is_fitted and self.refresh_level > self.refresh_level_criterion:
-            logging.info(f"skip due to refresh level ({self.refresh_level}) higher than {self.refresh_level_criterion}")
+            logging.info(
+                f"skip model fitting since the assigned {self.refresh_level} > {self.refresh_level_criterion}")
             return self
 
         logging.info(f"training model...")
@@ -208,7 +209,7 @@ class Solution(BaseSolution):
             data_type = "validation"
 
         if not self.is_fitted:
-            logging.warning(f"model is not fitted yet, skip")
+            logging.warning(f"skip model validation since model is not fitted yet")
             return self
 
         valid_data = self.data_manager.get_data_helper_by_type(data_type=data_type)
@@ -223,7 +224,7 @@ class Solution(BaseSolution):
 
         era = valid_data.groups_for_eval_
         if not self.data_manager.has_cast_mapping("index2label"):
-            logging.info(f"rank predictions from regression model")
+            logging.info(f"rank predictions for regression modeling")
             valid_predictions["prediction"] = valid_predictions.groupby(
                 era.name)["yhat"].apply(lambda x: pct_ranked(x))
         self.valid_predictions = valid_predictions
@@ -241,7 +242,7 @@ class Solution(BaseSolution):
     def _do_inference(self, data_type: str = "tournament", ):
         logging.info(f"inference on {data_type}")
         if not self.is_fitted:
-            logging.warning(f"model is not fitted yet, skip")
+            logging.warning(f"skip inference since model is not fitted yet")
             return self
 
         infer_data = self.data_manager.get_data_helper_by_type(data_type=data_type)
@@ -253,7 +254,7 @@ class Solution(BaseSolution):
 
         ret["yhat"] = self._cast_for_classifier_predict(ret["yhat"])
         if not self.data_manager.has_cast_mapping("index2label"):
-            logging.info(f"rank predictions from regression model")
+            logging.info(f"rank predictions for regression modeling")
             ret["prediction"] = ret.groupby(era.name)["yhat"].apply(lambda x: pct_ranked(x))
 
         ret.to_parquet(os.path.join(self.working_dir, f"{data_type}_predictions.parquet"))
@@ -318,7 +319,7 @@ class EnsembleSolution(BaseSolution):
             predictions.append(df)
 
         if not predictions:
-            logging.warning(f"no predictions to form ensemble.")
+            logging.warning(f"no predictions to form ensemble predictions.")
             return pd.DataFrame()
 
         df = pd.concat(predictions, sort=False)
@@ -340,6 +341,7 @@ class EnsembleSolution(BaseSolution):
 
     def _do_validation(self, data_type: Optional[str] = None):
         if data_type == "skip":
+            logging.warning(f"skip model validation")
             return self
 
         if not data_type:
@@ -352,6 +354,7 @@ class EnsembleSolution(BaseSolution):
 
         ret = self._ensemble_predictions(eval_type, groupby_col=era.name)
         if ret.empty:
+            logging.warning(f"skip inference since the ensemble predictions are empty")
             return self
 
         ret["yhat"] = ret.groupby(era.name)["yhat"].apply(lambda x: pct_ranked(x))
@@ -380,10 +383,11 @@ class EnsembleSolution(BaseSolution):
 
         ret = self._ensemble_predictions(data_type, groupby_col=era.name).reindex(index=y.index).reset_index()
         if ret.empty:
+            logging.warning(f"skip inference since the ensemble predictions are empty")
             return self
 
         if not self.data_manager.has_cast_mapping("index2label"):
-            logging.info(f"rank predictions from regression model")
+            logging.info(f"rank predictions for regression modeling")
             ret["prediction"] = ret.groupby(era.name)["yhat"].apply(lambda x: pct_ranked(x))
 
         ret.to_parquet(os.path.join(self.working_dir, f"{data_type}_predictions.parquet"))
