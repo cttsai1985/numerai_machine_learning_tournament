@@ -24,7 +24,7 @@ _MetricsFuncMapping = {
 
     "validationCorrPlusMmcSharpe": "nlargest",
     "validationMmcMean": "nlargest",
-    "validationCorrPlusMmcSharpeDiff": "nsmallest",
+    "validationCorrPlusMmcSharpeDiff": "nlargest",  # minus value
     "corrWithExamplePreds": "nsmallest",
 }
 
