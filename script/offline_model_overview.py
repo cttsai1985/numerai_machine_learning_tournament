@@ -27,7 +27,7 @@ _MetricsFuncMapping = {
 
     "corr + mmc sharpe": "nlargest",
     "mmc mean": "nlargest",
-    "corr + mmc sharpe diff": "nsmallest",
+    "corr + mmc sharpe diff": "nsmallest",  # due to minus value
     "corr with example predictions": "nsmallest",
 
     "corr smart sharpe": "nlargest",
