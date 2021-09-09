@@ -86,8 +86,9 @@ class NumerAPIHelper:
 
     @property
     def dir_model_path_current_round_(self):
-        return os.path.join(self.data_model_path, self.dir_path_pattern.format(
-            object_type="models", round=self.api.get_current_round()))
+        return os.path.join(
+            self.data_model_path,
+            self.dir_path_pattern.format(object_type="models", round=self.api.get_current_round()))
 
     def download_latest_dataset(
             self, extension: str = "parquet", valid_data_types: Optional[List[str]] = None, refresh: bool = False):
@@ -112,9 +113,8 @@ class NumerAPIHelper:
                 data_type=data_type, extension=extension, dest_path=self.data_dir_path, dest_filename=filename)
             logging.info(f"\n{filename} download finished.")
             if "csv" == extension:
-                pd.read_csv(
-                    os.path.join(self.data_dir_path, filename)).to_parquet(
-                    _template.format(data_type=data_type, extension="parquet"))
+                filepath: str = os.path.join(self.data_dir_path, filename)
+                pd.read_csv(filepath).to_parquet(_template.format(data_type=data_type, extension="parquet"))
 
         logging.info(f"\nall requested datasets updated: " + ",".join(valid_data_types))
         self.update_round_identifier_to_current()
@@ -149,8 +149,8 @@ class NumerAPIHelper:
             return True
 
         # submit submission
-        model_id = self.api.get_models()[model_name]
-        logging.info(f"model: {model_name} ({model_id})")
+        model_id = self.api.get_models()[model_name]  # get model_id
+        logging.info(f"model w/ its model_id: {model_name} ({model_id})")
         self.api.upload_predictions(os.path.join(dir_path, "tournament_predictions.csv"), model_id=model_id)
 
         # retrieve submission
