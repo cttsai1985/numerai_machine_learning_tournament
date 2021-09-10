@@ -23,9 +23,17 @@ if "__main__" == __name__:
     _args = parse_parameters()
     helper = NumerAPIHelper()
 
-    valid_data_types: Optional[List[str]] = [
-        "live", "test", "max_test_era", "tournament", "tournament_ids", "example_predictions"]
+    filenames: Optional[List[str]] = [
+        "example_predictions.csv",
+        "example_predictions.parquet",
+        # "example_validation_predictions.csv",
+        # "example_validation_predictions.parquet",
+        "numerai_live_data.parquet",
+        "numerai_tournament_data.parquet",
+        # "numerai_training_data.parquet",
+        # "numerai_validation_data.parquet",
+    ]
     if not _args.update_only:
-        valid_data_types = None
+        filenames = None
 
-    helper.download_latest_dataset(extension=_args.extension, valid_data_types=valid_data_types, refresh=_args.refresh)
+    helper.download_latest_dataset(filenames=filenames, refresh=_args.refresh)

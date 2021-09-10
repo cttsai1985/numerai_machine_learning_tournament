@@ -23,6 +23,17 @@ _MetricsToQuery = [
     "corrWithExamplePreds",
 ]
 
+_FILENAMES: List[str] = [
+    "example_predictions.csv",
+    "example_predictions.parquet",
+    "example_validation_predictions.csv",
+    "example_validation_predictions.parquet",
+    "numerai_live_data.parquet",
+    "numerai_tournament_data.parquet",
+    "numerai_training_data.parquet",
+    "numerai_validation_data.parquet",
+]
+
 
 class NumerAPIHelper:
     def __init__(
@@ -39,9 +50,7 @@ class NumerAPIHelper:
         self.data_dir_path: str = os.path.join(self.root_dir_path, "latest_tournament_datasets")
         logging.info(f"data dir: {self.data_dir_path}")
 
-        self.valid_data_types: List[str] = [
-            "training", "validation", "live", "test", "max_test_era", "tournament", "tournament_ids",
-            "example_predictions"]
+        self.filenames: List[str] = _FILENAMES
 
         self.current_round_str = f"{self.api.get_current_round():04d}"
         self.round_identifier_template: str = f"numerai_tournament_round"
@@ -91,32 +100,25 @@ class NumerAPIHelper:
             self.dir_path_pattern.format(object_type="models", round=self.api.get_current_round()))
 
     def download_latest_dataset(
-            self, extension: str = "parquet", valid_data_types: Optional[List[str]] = None, refresh: bool = False):
+            self, filenames: Optional[List[str]] = None, refresh: bool = False):
 
         if self.is_latest_round_identifier_current_ and not refresh:
             logging.info(f"skip download since datasets are up-to-date")
             return
 
-        if not valid_data_types:
-            valid_data_types = self.valid_data_types
+        if not filenames:
+            filenames = self.filenames
 
-        _template = "numerai_{data_type}_data.{extension}"
         Path(self.data_dir_path).mkdir(parents=True, exist_ok=True)
-        for data_type in valid_data_types:
-            filename = _template.format(data_type=data_type, extension=extension)
+        for filename in filenames:
 
             _filepath: str = os.path.join(self.data_dir_path, filename)
             if os.path.exists(_filepath) and refresh:
                 os.remove(_filepath)
-
-            self.api.download_latest_data(
-                data_type=data_type, extension=extension, dest_path=self.data_dir_path, dest_filename=filename)
+            self.api.download_dataset(filename=filename, dest_path=_filepath)
             logging.info(f"\n{filename} download finished.")
-            if "csv" == extension:
-                filepath: str = os.path.join(self.data_dir_path, filename)
-                pd.read_csv(filepath).to_parquet(_template.format(data_type=data_type, extension="parquet"))
 
-        logging.info(f"\nall requested datasets updated: " + ",".join(valid_data_types))
+        logging.info(f"\nall requested datasets updated: " + ", ".join(filenames))
         self.update_round_identifier_to_current()
         return self
 
