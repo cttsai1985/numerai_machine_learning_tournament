@@ -11,8 +11,9 @@ from sklearn.model_selection import BaseCrossValidator
 from optuna.integration import OptunaSearchCV
 
 from .OptunaLGBMIntegration import OptunaLightGBMTunerCV
-from ..DefaultConfigs import RefreshLevel
-from ..SolutionConfigs import SolutionConfigs
+from ds_utils.DefaultConfigs import RefreshLevel
+from ds_utils.SolutionConfigs import SolutionConfigs
+from ds_utils import Utils
 
 
 class _BaseOptunaTuner:
@@ -51,8 +52,12 @@ class _BaseOptunaTuner:
         return self
 
     @property
-    def params_filepath_(self) -> str:
+    def params_filepath_json_(self) -> str:
         return os.path.join(self.working_dir, "model_optimized_params.json")
+
+    @property
+    def params_filepath_(self) -> str:
+        return os.path.join(self.working_dir, "model_optimized_params.yaml")
 
     @property
     def params_(self) -> Dict[str, Any]:
@@ -63,22 +68,31 @@ class _BaseOptunaTuner:
         return self.best_params
 
     def save_optimized_params(self):
-        with open(self.params_filepath_, "w") as fp:
-            json.dump(self.best_params, fp)
-            logging.info(f"save best hyper-parameters: {self.best_params} to {self.params_filepath_}")
-
+        Utils.save_yaml_configs(self.best_params, self.params_filepath_)
+        logging.info(f"save best hyper-parameters: {self.best_params} to {self.params_filepath_}")
         return self
 
-    def load_optimized_params(self):
-        if not (os.path.exists(self.params_filepath_) and os.path.isfile(self.params_filepath_)):
-            logging.info(f"optimized hyper-parameters not exist: {self.params_filepath_}")
+    def load_optimized_params_json(self):
+        if not (os.path.exists(self.params_filepath_json_) and os.path.isfile(self.params_filepath_json_)):
+            logging.info(f"optimized hyper-parameters not exist: {self.params_filepath_json_}")
             return self
 
-        with open(self.params_filepath_, "r") as fp:
+        logging.info(f"[deprecating] load best hyper-parameters from json")
+        with open(self.params_filepath_json_, "r") as fp:
             self.best_params = json.load(fp)
             logging.info(f"load best hyper-parameters: {self.best_params} from {self.params_filepath_}")
 
         self.is_tuned = True
+        return self
+
+    def load_optimized_params(self):
+        self.load_optimized_params_json()  # todo: deprecating, keep for compatibility
+
+        if not self.is_tuned:
+            self.best_params = Utils.load_yaml_configs(self.params_filepath_)
+            if self.best_params:
+                self.is_tuned = True
+
         return self
 
     @classmethod
