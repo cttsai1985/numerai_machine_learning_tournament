@@ -170,8 +170,6 @@ class SolutionConfigs(BaseSolutionConfigs):
     def __init__(
             self, root_resource_path: str, configs_file_path: str = "configs.yaml", eval_data_type: str = None,
             num_boost_round: int = 2000):
-        super().__init__(
-            root_resource_path=root_resource_path, configs_file_path=configs_file_path, eval_data_type=eval_data_type)
 
         self.template_cv_splitter_gen_query: str = "StratifiedKFold"
         self.template_cv_splitter_gen: BaseCrossValidator = StratifiedKFold
@@ -204,7 +202,8 @@ class SolutionConfigs(BaseSolutionConfigs):
         self.feval_gen: Optional[str] = None
         self.feval: Optional[Callable[..., Any]] = None
 
-        self._load_yaml_configs(configs_file_path)
+        super().__init__(
+            root_resource_path=root_resource_path, configs_file_path=configs_file_path, eval_data_type=eval_data_type)
         self._configure_solution_from_yaml()
         # self._save_yaml_configs()
 
