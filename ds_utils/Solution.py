@@ -16,6 +16,11 @@ from sklearn.base import BaseEstimator
 from .DefaultConfigs import RefreshLevel
 from .Utils import pct_ranked
 
+_scoreSplitFilename: str = "{eval_type}_score_split.parquet"
+_scoreAllFilename: str = "{eval_type}_score_all.parquet"
+_predictionsParquetFilename: str = "{eval_type}_predictions.parquet"
+_predictionsCsvFilename: str = "{eval_type}_predictions.csv"
+
 
 class BaseSolution:
     def __init__(
@@ -24,51 +29,84 @@ class BaseSolution:
         self.refresh_level: RefreshLevel = refresh_level
         self.refresh_level_criterion: RefreshLevel = RefreshLevel("model")
 
+        self.is_fitted: bool = False
+
         self.working_dir: str = working_dir if working_dir else "./"
         Path(self.working_dir).mkdir(parents=True, exist_ok=True)
         self.data_manager: "DataManager" = data_manager
 
         self.scoring_func: Callable = scoring_func
 
-        self.round_digit: int = 3
+    def _cast_for_classifier(self, target: pd.Series, cast_type: str):
+        if self.data_manager.has_cast_mapping(cast_type):
+            return self.data_manager.cast_target(target, cast_type)
 
-        self.valid_predictions: Optional[pd.DataFrame] = None
-        self.valid_score_all: Optional[pd.DataFrame] = None
-        self.valid_score_split: Optional[pd.DataFrame] = None
-        self.valid_fnc_all: Optional[pd.DataFrame] = None
-        self.valid_fnc_split: Optional[pd.DataFrame] = None
+        return target
 
     def _cast_for_classifier_fit(self, target: pd.Series) -> pd.Series:
-        cast_type = "label2index"
-        if self.data_manager.has_cast_mapping(cast_type):
-            return self.data_manager.cast_target(target, cast_type)
-
-        return target
+        return self._cast_for_classifier(target=target, cast_type="label2index")
 
     def _cast_for_classifier_predict(self, target: pd.Series) -> pd.Series:
-        cast_type = "index2label"
-        if self.data_manager.has_cast_mapping(cast_type):
-            return self.data_manager.cast_target(target, cast_type)
+        return self._cast_for_classifier(target=target, cast_type="index2label")
 
-        return target
+    def _create_submission_file(self, yhat: pd.Series, data_type: str):
+        filepath: str = os.path.join(self.working_dir, _predictionsCsvFilename.format(eval_type=data_type))
+        predictions = self.data_manager.get_example_data_by_type(data_type=data_type).squeeze()
+        yhat.index.name = predictions.index.name
+        yhat.reindex(index=predictions.index).rename(predictions.name).to_csv(filepath)
 
     def _do_cross_val(self, data_type: Optional[str] = None):
-        raise NotImplementedError
+        raise NotImplementedError()
 
-    def _save_prediction(self, eval_type: str = "cross_val"):
-        self.cross_val_predictions.to_parquet(
-            os.path.join(self.working_dir, f"{eval_type}_predictions.parquet"))
-        self.cross_val_score_split.to_parquet(os.path.join(self.working_dir, "cross_val_score_split.parquet"))
-        return self
+    def _do_model_fit_for_training(self, data_type: str):
+        raise NotImplementedError()
 
     def _do_model_fit(self, data_type: Optional[str] = None):
-        raise NotImplementedError
+        if not data_type:
+            data_type = "training"
+
+        if self.is_fitted:
+            return self
+
+        self._do_model_fit_for_training(data_type=data_type)
+        return self
+
+    def _do_inference_for_validation(self, data_type: str) -> pd.Series:
+        raise NotImplementedError()
 
     def _do_validation(self, data_type: Optional[str] = None):
-        raise NotImplementedError
+        if data_type == "skip":
+            return self
+
+        if not data_type:
+            data_type = "validation"
+
+        if not self.is_fitted:
+            logging.warning(f"skip model validation since model is not fitted yet")
+            return self
+
+        yhat = self._do_inference_for_validation(data_type=data_type)
+        self._create_submission_file(yhat, data_type=data_type)
+        return self
+
+    def _do_inference_for_tournament(self, data_type: str) -> pd.Series:
+        raise NotImplementedError()
 
     def _do_inference(self, data_type: str = "tournament", ):
-        raise NotImplementedError
+        logging.info(f"inference on {data_type}")
+        if not self.is_fitted:
+            logging.warning(f"skip inference since model is not fitted yet")
+            return self
+
+        yhat = self._do_inference_for_tournament(data_type=data_type)
+        self._create_submission_file(yhat, data_type=data_type)
+        return self
+
+    def save_model(self):
+        raise NotImplementedError()
+
+    def load_model(self):
+        raise NotImplementedError()
 
     def evaluate(self, train_data_type: str = "training", valid_data_type: str = "validation", ):
         self._do_cross_val(data_type=train_data_type)
@@ -86,12 +124,7 @@ class BaseSolution:
 
     @classmethod
     def from_configs(cls, args: Namespace, configs: "SolutionConfigs", output_data_path: str, **kwargs):
-        raise NotImplementedError
-
-    def create_submission_csv(
-            self, results: pd.DataFrame, data_type: str, columns: List[str] = ["id", "prediction"]):
-        results.reindex(columns=columns).to_csv(
-            os.path.join(self.working_dir, f"{data_type}_predictions.csv"), index=False)
+        raise NotImplementedError()
 
 
 class Solution(BaseSolution):
@@ -104,7 +137,6 @@ class Solution(BaseSolution):
         super().__init__(
             refresh_level=refresh_level, data_manager=data_manager, scoring_func=scoring_func, working_dir=working_dir)
 
-        self.is_fitted: bool = False
         self.model: Optional[BaseEstimator] = model
         self.fit_params: Optional[Dict[str, Any]] = fit_params if fit_params is not None else dict()
 
@@ -112,12 +144,6 @@ class Solution(BaseSolution):
         self.has_cv_splitter: bool = False
         if cv_splitter is not None:
             self.has_cv_splitter = True
-
-        self.cross_val_predictions: Optional[pd.DataFrame] = None
-        self.cross_val_score_all: Optional[pd.DataFrame] = None
-        self.cross_val_score_split: Optional[pd.DataFrame] = None
-        self.cross_val_fnc_all: Optional[pd.DataFrame] = None
-        self.cross_val_fnc_split: Optional[pd.DataFrame] = None
 
     @property
     def model_filepath_(self) -> str:
@@ -136,130 +162,74 @@ class Solution(BaseSolution):
         if not (os.path.exists(self.model_filepath_) or os.path.isfile(self.model_filepath_)):
             return self
 
+        if self.is_fitted:
+            logging.info(f"model fitted and loaded.")
+            return self
+
+        if self.refresh_level <= self.refresh_level_criterion:
+            logging.info(
+                f"skip loading model and refit ({self.refresh_level} <= {self.refresh_level_criterion})")
+            return self
+
         logging.info(f"load pre-fitted model from {self.model_filepath_}")
         model = joblib.load(self.model_filepath_)
         if not isinstance(model, type(self.model)):
             logging.info(f"model mismatched: from file ({type(model)}) != model ({type(self.model)})")
-            return self
+            raise ValueError(f"model mismatched: from file ({type(model)}) != model ({type(self.model)})")
 
-        self.is_fitted = True
         self.model = model
+        self.is_fitted = True
         return self
 
     def _do_cross_val(self, data_type: Optional[str] = None):
-        if not self.has_cv_splitter:
-            return self
+        pass
 
-        if not data_type:
-            data_type = "training"
-
-        cross_val_data = self.data_manager.get_data_helper_by_type(data_type=data_type)
-        X, y, groups = cross_val_data.data_
-
-        y = self._cast_for_classifier_fit(y)
-        yhat = cross_val_predict(
-            self.model, X, y=y, cv=self.cv_splitter, n_jobs=None, verbose=0, fit_params=self.fit_params,
-            pre_dispatch='2*n_jobs', method='predict')
-
-        yhat = pd.Series(yhat, index=y.index, name="yhat")
-        yhat = self._cast_for_classifier_predict(yhat)
-
-        eval_type: str = "cross_val"
-        ret = cross_val_data.evaluate(yhat=yhat, scoring_func=self.scoring_func)
-        self.cross_val_predictions, self.cross_val_score_all, self.cross_val_score_split = ret
-        self.cross_val_predictions.to_parquet(os.path.join(self.working_dir, f"{eval_type}_predictions.parquet"))
-        self.cross_val_score_split.to_parquet(os.path.join(self.working_dir, f"{eval_type}_score_split.parquet"))
-        self.cross_val_score_all.to_parquet(os.path.join(self.working_dir, f"{eval_type}_score_all.parquet"))
-
-        ret = cross_val_data.evaluate(yhat=yhat, scoring_func=self.scoring_func, feature_neutral=True)
-        _, self.cross_val_fnc_all, self.cross_val_fnc_split = ret
-        self.cross_val_fnc_split.to_parquet(os.path.join(self.working_dir, "cross_val_fnc_split.parquet"))
-        self.cross_val_fnc_all.to_parquet(os.path.join(self.working_dir, "cross_val_fnc_all.parquet"))
-        return self
-
-    def _save_prediction(self, eval_type: str = "cross_val"):
-        self.cross_val_predictions.to_parquet(
-            os.path.join(self.working_dir, f"{eval_type}_predictions.parquet"))
-        self.cross_val_score_split.to_parquet(os.path.join(self.working_dir, "cross_val_score_split.parquet"))
-        return self
-
-    def _do_model_fit(self, data_type: Optional[str] = None):
-        if not data_type:
-            data_type = "training"
-
-        if self.is_fitted and self.refresh_level > self.refresh_level_criterion:
-            logging.info(
-                f"skip model fitting since the assigned {self.refresh_level} > {self.refresh_level_criterion}")
-            return self
-
-        logging.info(f"training model...")
+    def _do_model_fit_for_training(self, data_type: str):
         train_data = self.data_manager.get_data_helper_by_type(data_type=data_type)
         X, y, groups = train_data.data_
-        y = self._cast_for_classifier_fit(y)
+
+        logging.info(f"training model...")
         self.model.fit(X, y, **self.fit_params)  # TODO: add fit_params:
         self.is_fitted = True
         self.save_model()
         return self
 
-    def _do_validation(self, data_type: Optional[str] = None):
-        if data_type == "skip":
-            return self
-
-        if not data_type:
-            data_type = "validation"
-
-        if not self.is_fitted:
-            logging.warning(f"skip model validation since model is not fitted yet")
-            return self
+    def _do_inference_for_validation(self, data_type: str) -> pd.Series:
+        yhat_name: str = "yhat"
+        yhat_pct_name: str = "prediction"
 
         valid_data = self.data_manager.get_data_helper_by_type(data_type=data_type)
         X, y, groups = valid_data.data_
-        yhat = pd.Series(self.model.predict(X), index=y.index, name="yhat")
+        yhat = pd.Series(self.model.predict(X), index=y.index, name=yhat_name)
 
-        yhat = self._cast_for_classifier_predict(yhat)
-
-        eval_type: str = "validation"
         ret = valid_data.evaluate(yhat=yhat, scoring_func=self.scoring_func)
-        valid_predictions, self.valid_score_all, self.valid_score_split = ret
+        ret[1].to_parquet(os.path.join(self.working_dir, _scoreAllFilename.format(eval_type=data_type)))
+        ret[2].to_parquet(os.path.join(self.working_dir, _scoreSplitFilename.format(eval_type=data_type)))
 
+        logging.info(f"rank predictions for regression modeling")
         era = valid_data.groups_for_eval_
-        if not self.data_manager.has_cast_mapping("index2label"):
-            logging.info(f"rank predictions for regression modeling")
-            valid_predictions["prediction"] = valid_predictions.groupby(
-                era.name)["yhat"].apply(lambda x: pct_ranked(x))
-        self.valid_predictions = valid_predictions
+        valid_predictions = ret[0]
+        valid_predictions[yhat_pct_name] = valid_predictions.groupby(era.name)[yhat_name].apply(lambda x: pct_ranked(x))
 
-        self.valid_predictions.to_parquet(os.path.join(self.working_dir, f"{eval_type}_predictions.parquet"))
-        self.valid_score_split.to_parquet(os.path.join(self.working_dir, f"{eval_type}_score_split.parquet"))
-        self.valid_score_all.to_parquet(os.path.join(self.working_dir, f"{eval_type}_score_all.parquet"))
+        valid_predictions.to_parquet(
+            os.path.join(self.working_dir, _predictionsParquetFilename.format(eval_type=data_type)))
+        return valid_predictions[yhat_pct_name]
 
-        ret = valid_data.evaluate(yhat=yhat, scoring_func=self.scoring_func, feature_neutral=True)
-        _, self.valid_fnc_all, self.valid_fnc_split = ret
-        self.valid_fnc_all.to_parquet(os.path.join(self.working_dir, "validation_fnc_all.parquet"))
-        self.valid_fnc_split.to_parquet(os.path.join(self.working_dir, "validation_fnc_split.parquet"))
-        return self
-
-    def _do_inference(self, data_type: str = "tournament", ):
-        logging.info(f"inference on {data_type}")
-        if not self.is_fitted:
-            logging.warning(f"skip inference since model is not fitted yet")
-            return self
+    def _do_inference_for_tournament(self, data_type: str) -> pd.Series:
+        yhat_name: str = "yhat"
+        yhat_pct_name: str = "prediction"
 
         infer_data = self.data_manager.get_data_helper_by_type(data_type=data_type)
         X, y, groups = infer_data.data_
         era = infer_data.groups_for_eval_
 
-        ret = pd.DataFrame(
-            {"yhat": self.model.predict(X), "id": y.index, era.name: era.values, y.name: y.values})
+        predictions = pd.DataFrame(
+            {yhat_name: self.model.predict(X), "id": y.index, era.name: era.values, y.name: y.values}).set_index("id")
 
-        ret["yhat"] = self._cast_for_classifier_predict(ret["yhat"])
-        if not self.data_manager.has_cast_mapping("index2label"):
-            logging.info(f"rank predictions for regression modeling")
-            ret["prediction"] = ret.groupby(era.name)["yhat"].apply(lambda x: pct_ranked(x))
+        logging.info(f"rank predictions for regression modeling")
+        predictions[yhat_pct_name] = predictions.groupby(era.name)[yhat_name].apply(lambda x: pct_ranked(x))
 
-        ret.to_parquet(os.path.join(self.working_dir, f"{data_type}_predictions.parquet"))
-        self.create_submission_csv(results=ret, data_type=data_type, columns=["id", "prediction"])
-        return self
+        return predictions[yhat_pct_name]
 
     def evaluate(self, train_data_type: str = "training", valid_data_type: str = "validation", ):
         self._do_cross_val(data_type=train_data_type)
@@ -293,10 +263,10 @@ class EnsembleSolution(BaseSolution):
         self.solution_dirs: List[str] = solution_dirs
 
     def _do_cross_val(self, data_type: Optional[str] = None):
-        raise NotImplementedError
+        raise NotImplementedError()
 
-    def _do_model_fit(self, data_type: Optional[str] = None):
-        raise NotImplementedError
+    def _do_model_fit_for_training(self, data_type: str):
+        raise NotImplementedError()
 
     @staticmethod
     def _check_prediction(df: pd.DataFrame) -> pd.DataFrame:
@@ -306,6 +276,8 @@ class EnsembleSolution(BaseSolution):
         return df
 
     def _ensemble_predictions(self, eval_type: str, groupby_col: str) -> pd.DataFrame:
+        yhat_name: str = "yhat"
+
         logging.info(f"ensemble for {eval_type}")
         predictions = list()
         for solution_dir in self.solution_dirs:
@@ -315,7 +287,7 @@ class EnsembleSolution(BaseSolution):
                 continue
 
             df = pd.read_parquet(file_path)
-            df["yhat"] = df.groupby(groupby_col)["yhat"].apply(lambda x: pct_ranked(x))
+            df[yhat_name] = df.groupby(groupby_col)[yhat_name].apply(lambda x: pct_ranked(x))
             predictions.append(df)
 
         if not predictions:
@@ -330,25 +302,21 @@ class EnsembleSolution(BaseSolution):
         # analytics
         df_corr = df.copy()
         cols = list()
-        for i, pred in enumerate(predictions):
+        for i, prediction in enumerate(predictions):
             col = f"yhat_{i:03d}"
-            df_corr[col] = self._check_prediction(pred)["yhat"]
+            df_corr[col] = self._check_prediction(prediction)[yhat_name]
             cols.append(col)
 
         logging.info(
             f"correlation intra predictions:\n{df_corr.groupby(groupby_col)[cols].corr(method='spearman')}")
         return ret
 
-    def _do_validation(self, data_type: Optional[str] = None):
-        if data_type == "skip":
-            logging.warning(f"skip model validation")
-            return self
-
-        if not data_type:
-            data_type = "validation"
+    def _do_inference_for_validation(self, data_type: str) -> pd.Series:
+        yhat_name: str = "yhat"
+        yhat_pct_name: str = "prediction"
 
         valid_data = self.data_manager.get_data_helper_by_type(data_type=data_type)
-        eval_type: str = "validation"
+        eval_type: str = data_type
 
         era = valid_data.groups_for_eval_
 
@@ -357,42 +325,40 @@ class EnsembleSolution(BaseSolution):
             logging.warning(f"skip inference since the ensemble predictions are empty")
             return self
 
-        ret["yhat"] = ret.groupby(era.name)["yhat"].apply(lambda x: pct_ranked(x))
-        yhat = ret["yhat"]
+        ret[yhat_name] = ret.groupby(era.name)[yhat_name].apply(lambda x: pct_ranked(x))
+        yhat = ret[yhat_name]
         ret = valid_data.evaluate(yhat=yhat, scoring_func=self.scoring_func)
 
-        valid_predictions, self.valid_score_all, self.valid_score_split = ret
-        valid_predictions["prediction"] = valid_predictions.groupby(era.name)["yhat"].apply(lambda x: pct_ranked(x))
-        self.valid_predictions = valid_predictions
+        ret[1].to_parquet(os.path.join(self.working_dir, _scoreAllFilename.format(eval_type=data_type)))
+        ret[2].to_parquet(os.path.join(self.working_dir, _scoreSplitFilename.format(eval_type=data_type)))
 
-        self.valid_predictions.to_parquet(os.path.join(self.working_dir, f"{eval_type}_predictions.parquet"))
-        self.valid_score_split.to_parquet(os.path.join(self.working_dir, f"{eval_type}_score_split.parquet"))
-        self.valid_score_all.to_parquet(os.path.join(self.working_dir, f"{eval_type}_score_all.parquet"))
+        logging.info(f"rank predictions for regression modeling")
+        valid_predictions = ret[0]
+        valid_predictions[yhat_pct_name] = valid_predictions.groupby(era.name)[yhat_name].apply(lambda x: pct_ranked(x))
 
-        ret = valid_data.evaluate(yhat=yhat, scoring_func=self.scoring_func, feature_neutral=True)
-        _, self.valid_fnc_all, self.valid_fnc_split = ret
-        self.valid_fnc_all.to_parquet(os.path.join(self.working_dir, "validation_fnc_all.parquet"))
-        self.valid_fnc_split.to_parquet(os.path.join(self.working_dir, "validation_fnc_split.parquet"))
+        valid_predictions.to_parquet(
+            os.path.join(self.working_dir, _predictionsParquetFilename.format(eval_type=data_type)))
+        return valid_predictions[yhat_pct_name]
 
-    def _do_inference(self, data_type: str = "tournament", ):
+    def _do_inference_for_tournament(self, data_type: str) -> pd.Series:
+        yhat_name: str = "yhat"
+        yhat_pct_name: str = "prediction"
+
         logging.info(f"inference on {data_type}")
-
         infer_data = self.data_manager.get_data_helper_by_type(data_type=data_type)
         X, y, groups = infer_data.data_
         era = infer_data.groups_for_eval_
 
-        ret = self._ensemble_predictions(data_type, groupby_col=era.name).reindex(index=y.index).reset_index()
-        if ret.empty:
+        predictions = self._ensemble_predictions(data_type, groupby_col=era.name).reindex(index=y.index).reset_index()
+        if predictions.empty:
             logging.warning(f"skip inference since the ensemble predictions are empty")
             return self
 
-        if not self.data_manager.has_cast_mapping("index2label"):
-            logging.info(f"rank predictions for regression modeling")
-            ret["prediction"] = ret.groupby(era.name)["yhat"].apply(lambda x: pct_ranked(x))
+        predictions[yhat_pct_name] = predictions.groupby(era.name)[yhat_name].apply(lambda x: pct_ranked(x))
 
-        ret.to_parquet(os.path.join(self.working_dir, f"{data_type}_predictions.parquet"))
-        self.create_submission_csv(results=ret, data_type=data_type, columns=["id", "prediction"])
-        return self
+        predictions.to_parquet(
+            os.path.join(self.working_dir, _predictionsParquetFilename.format(eval_type=data_type)))
+        return predictions[yhat_pct_name]
 
     def evaluate(self, train_data_type: str = "training", valid_data_type: str = "validation", ):
         self._do_validation(data_type=valid_data_type)
@@ -401,6 +367,12 @@ class EnsembleSolution(BaseSolution):
     def run(self, train_data_type: str = "training", infer_data_type: str = "tournament", ):
         self._do_inference(data_type=infer_data_type)
         return self
+
+    def save_model(self):
+        raise NotImplementedError()
+
+    def load_model(self):
+        raise NotImplementedError()
 
     @classmethod
     def from_configs(cls, args: Namespace, configs: "SolutionConfigs", output_data_path: str, **kwargs):

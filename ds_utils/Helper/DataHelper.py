@@ -14,7 +14,7 @@ from ds_utils.Utils import scale_uniform, natural_sort
 class DataHelper:
     def __init__(
             self, filename: str, dataset_type: str, cols_feature: List[str], col_target: str = "target",
-            cols_group: Optional[List[str]] = None):
+            cols_group: Optional[List[str]] = None, on_disk: bool = True):
         self.filename: str = filename
         self.dataset_type: str = dataset_type
         self.col_target: str = col_target
@@ -22,28 +22,49 @@ class DataHelper:
         self.cols_group: Optional[List[str]] = cols_group
         self.cols_group_for_eval: List[str] = ["era"]
 
+        self.on_disk: bool = on_disk
+
         self.data: Optional[pd.DataFrame] = None
         self.is_loaded: bool = False
         self.is_good: bool = False
 
     @classmethod
     def from_params(cls, filename: str, dataset_type: str, cols_feature: List[str], col_target: str = "target",
-                    cols_group: Optional[List[str]] = None):
+                    cols_group: Optional[List[str]] = None, on_disk: bool = True):
         return cls(
             filename=filename, dataset_type=dataset_type, cols_feature=cols_feature, col_target=col_target,
-            cols_group=cols_group)
+            cols_group=cols_group, on_disk=on_disk)
 
     @classmethod
     def from_configs(cls, **kwargs):
         # TODO: implemented and refactor other dependency
         return NotImplementedError()
 
-    def load(self):
+    def _read_data(self, columns: Optional[List[str]] = None) -> pd.DataFrame:
+        if self.on_disk:
+            data = pd.read_parquet(self.filename, columns=columns)
+        else:
+            data = self.data.reindex(columns=columns)
+
+        if data.index.name != "id":
+            data.set_index("id", inplace=True)
+
+        return data
+
+    def load(self, reload: bool = False):
         if not os.path.exists(self.filename):
             logging.warning(f"file {self.filename} does not exist.")
+            raise ValueError(f"file {self.filename} does not exist.")
+
+        if self.on_disk:
+            logging.info(f"run on_disk to save memory")
             return self
 
-        self.data = pd.read_parquet(self.filename).set_index("id")
+        elif not self.on_disk and self.is_loaded and not reload:
+            logging.info(f"file {self.filename} is is_loaded and not reloaded.")
+            return self
+
+        self.data = self._read_data()
         logging.info(f"read {self.data.shape} from {self.filename}")
         self.is_loaded = True
 
@@ -100,6 +121,7 @@ class DataHelper:
             lambda x: scoring_func(x[self.y_.name], x[col_yhat], scoring_type=scoring_type))
         score_split = score_split.reindex(index=natural_sort(score_split.index.tolist()))
 
+        # all score
         score_all = scoring_func(
             self.y_, predictions[col_yhat], scoring_type=scoring_type).to_frame(self.group_name_for_eval_)
         score_all["sharpe"] = score_split.mean() / score_split.std()
@@ -129,15 +151,16 @@ class DataHelper:
         if not self.cols_group:
             return pd.Series()
 
-        if len(self.cols_group) == 1:
-            return self.data.reindex(columns=self.cols_group).squeeze()
+        data = self._read_data(columns=self.cols_group)
 
-        return self.data.reindex(
-            columns=self.cols_group).apply(lambda x: "_".join(x.astype("str")), axis=1).rename(self.group_name_)
+        if len(self.cols_group) == 1:
+            return data.squeeze().astype("category")
+
+        return data.apply(lambda x: "_".join(x.astype("str")), axis=1).astype("category").rename(self.group_name_)
 
     @property
     def groups_for_eval_(self) -> pd.Series:
-        return self.data.reindex(columns=self.cols_group_for_eval).squeeze()
+        return self._read_data(columns=self.cols_group_for_eval).squeeze()
 
     @property
     def group_name_for_eval_(self) -> str:
@@ -145,11 +168,12 @@ class DataHelper:
 
     @property
     def y_(self) -> pd.Series:
-        return self.data[self.col_target].astype("float")
+        data = self._read_data(columns=[self.col_target])
+        return data.squeeze().astype("float")
 
     @property
     def X_(self) -> pd.DataFrame:
-        return self.data.reindex(columns=self.cols_feature)
+        return self._read_data(columns=self.cols_feature)
 
     @property
     def data_(self) -> Tuple[pd.DataFrame, pd.Series, pd.Series]:

@@ -8,6 +8,18 @@ from typing import Optional, Callable, Any, Dict, List, Tuple
 
 from .Helper import DataHelper
 
+_DATA_PAIRS: List[Tuple[str]] = [
+    ("training", "numerai_training_data.parquet",),
+    ("validation", "numerai_validation_data.parquet",),
+    ("tournament", "numerai_tournament_data.parquet",),
+    ("live", "numerai_live_data.parquet",),
+]
+
+_EXAMPLE_PAIRS: List[Tuple[str]] = [
+    ("validation", "example_validation_predictions.parquet"),
+    ("tournament", "example_predictions.parquet"),
+]
+
 
 class DataManager:
     def __init__(
@@ -16,13 +28,11 @@ class DataManager:
             label2index: Optional[Dict[int, float]] = None, index2label: Optional[Dict[float, int]] = None, **kwargs):
         self.working_dir: str = working_dir if working_dir else "./"
 
-        # TODO: remove dependency and move to yaml configs
-        self.data_file_types: List[str] = ["training", "validation", "test", "live", "tournament"]
-        self.data_file_names: List[str] = [
-            "numerai_training_data.parquet", "numerai_validation_data.parquet", "numerai_test_data.parquet",
-            "numerai_live_data.parquet", "numerai_tournament_data.parquet"]
+        self.example_mapping: Dict[str, str] = dict(_EXAMPLE_PAIRS)
+        self.data_file_types: List[str] = list(zip(*_DATA_PAIRS))[0]
+        self.data_file_names: List[str] = list(zip(*_DATA_PAIRS))[1]
+        self.data_mapping: Dict[str, str] = dict(_DATA_PAIRS)
 
-        self.data_mapping = {k: v for k, v in zip(self.data_file_types, self.data_file_names)}
         if data_mapping:
             self.data_mapping = data_mapping
             self.data_file_types = list(data_mapping.keys())
@@ -33,7 +43,7 @@ class DataManager:
 
         self._check_status()
         self.col_target: str = col_target
-        self.cols_group: Optional[List[str]] = cols_group if cols_group else ["era"]
+        self.cols_group: Optional[List[str]] = cols_group if cols_group and isinstance(cols_group, list) else ["era"]
         self.cols_feature: Optional[List[str]] = cols_feature
 
     @classmethod
@@ -77,6 +87,16 @@ class DataManager:
             raise ValueError(f"mapping is not completed: {y.isna().sum()}")
 
         return y
+
+    def get_example_data_by_type(self, data_type: str = "tournament") -> pd.DataFrame:
+        if data_type not in self.example_mapping:
+            return pd.DataFrame
+
+        filepath: str = os.path.join(self.working_dir, self.example_mapping.get(data_type))
+        if not(os.path.exists(filepath) and os.path.isfile(filepath)):
+            return pd.DataFrame()
+
+        return pd.read_parquet(filepath)
 
     def get_data_helper_by_type(
             self, data_type: str = "training", preload: bool = True) -> Tuple[pd.DataFrame, pd.Series, pd.Series]:

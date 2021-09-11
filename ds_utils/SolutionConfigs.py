@@ -20,6 +20,7 @@ from lightgbm import LGBMRegressor, LGBMClassifier
 
 from .PerformanceTracker import PerformanceTracker
 from . import Helper
+from .CustomSplit import TimeSeriesSplitGroups
 from .DataManager import DataManager
 from .Metrics import spearman_corr
 from .LGBMUtils import lgbm_spearman_eval_func, lgbm_mae_eval_func
@@ -39,6 +40,7 @@ _available_cv_splitter: Dict[str, Callable] = dict([
     ("LeavePGroupsOut", LeavePGroupsOut),
     ("GroupKFold", GroupKFold),
     ("PredefinedSplit", PredefinedSplit),
+    ("TimeSeriesSplitGroups", TimeSeriesSplitGroups),
 ])
 
 _available_model_gen: Dict[str, Callable] = dict([
