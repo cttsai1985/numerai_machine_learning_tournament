@@ -8,7 +8,7 @@ import dask.dataframe as dd
 import pandas as pd
 from pathlib import Path
 from typing import Optional, Callable, Any, Dict, List, Tuple
-from ds_utils.Utils import scale_uniform, natural_sort
+from ds_utils.Utils import scale_uniform, natural_sort, pct_ranked
 
 
 class DataHelper:
@@ -90,6 +90,11 @@ class DataHelper:
         self.data = pd.concat([data] + [func(data, y, groups) for func in process_funcs], axis=1)
         # TODO: feature transform
         return self
+
+    def pct_rank_normalize(self, yhat: pd.Series, ) -> pd.Series:
+        logging.info(f"rank predictions for regression modeling")
+        predictions = pd.concat([yhat, self.groups_for_eval_], axis=1)
+        return predictions.groupby(self.group_name_for_eval_)[yhat.name].apply(lambda x: pct_ranked(x))
 
     def feature_neutralize(self, yhat: pd.Series) -> pd.Series:
         # Normalize submission

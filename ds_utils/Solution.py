@@ -14,7 +14,7 @@ from sklearn.model_selection import BaseCrossValidator
 from sklearn.base import BaseEstimator
 
 from .DefaultConfigs import RefreshLevel
-from .Utils import pct_ranked
+from ds_utils import Utils
 
 _scoreSplitFilename: str = "{eval_type}_score_split.parquet"
 _scoreAllFilename: str = "{eval_type}_score_all.parquet"
@@ -206,10 +206,8 @@ class Solution(BaseSolution):
         ret[1].to_parquet(os.path.join(self.working_dir, _scoreAllFilename.format(eval_type=data_type)))
         ret[2].to_parquet(os.path.join(self.working_dir, _scoreSplitFilename.format(eval_type=data_type)))
 
-        logging.info(f"rank predictions for regression modeling")
-        era = valid_data.groups_for_eval_
         valid_predictions = ret[0]
-        valid_predictions[yhat_pct_name] = valid_predictions.groupby(era.name)[yhat_name].apply(lambda x: pct_ranked(x))
+        valid_predictions[yhat_pct_name] = valid_data.pct_rank_normalize(valid_predictions[yhat_name])
 
         valid_predictions.to_parquet(
             os.path.join(self.working_dir, _predictionsParquetFilename.format(eval_type=data_type)))
@@ -221,14 +219,10 @@ class Solution(BaseSolution):
 
         infer_data = self.data_manager.get_data_helper_by_type(data_type=data_type)
         X, y, groups = infer_data.data_
-        era = infer_data.groups_for_eval_
 
-        predictions = pd.DataFrame(
-            {yhat_name: self.model.predict(X), "id": y.index, era.name: era.values, y.name: y.values}).set_index("id")
-
-        logging.info(f"rank predictions for regression modeling")
-        predictions[yhat_pct_name] = predictions.groupby(era.name)[yhat_name].apply(lambda x: pct_ranked(x))
-
+        predictions = y.to_frame()
+        predictions[yhat_name] = self.model.predict(X)
+        predictions[yhat_pct_name] = infer_data.pct_rank_normalize(predictions[yhat_name])
         return predictions[yhat_pct_name]
 
     def evaluate(self, train_data_type: str = "training", valid_data_type: str = "validation", ):
@@ -277,7 +271,9 @@ class EnsembleSolution(BaseSolution):
 
     def _ensemble_predictions(self, eval_type: str, groupby_col: str) -> pd.DataFrame:
         yhat_name: str = "yhat"
+        yhat_pct_name: str = "prediction"
 
+        data_helper = self.data_manager.get_data_helper_by_type(data_type=eval_type)
         logging.info(f"ensemble for {eval_type}")
         predictions = list()
         for solution_dir in self.solution_dirs:
@@ -286,9 +282,13 @@ class EnsembleSolution(BaseSolution):
                 logging.info(f"prediction file does not exist: {file_path}")
                 continue
 
-            df = pd.read_parquet(file_path)
-            df[yhat_name] = df.groupby(groupby_col)[yhat_name].apply(lambda x: pct_ranked(x))
-            predictions.append(df)
+            df_prediction = pd.read_parquet(file_path)
+            if yhat_pct_name in df_prediction.columns:
+                df_prediction[yhat_name] = df_prediction[yhat_pct_name]
+            else:
+                df_prediction[yhat_name] = data_helper.pct_rank_normalize(df_prediction[yhat_name])
+
+            predictions.append(df_prediction)
 
         if not predictions:
             logging.warning(f"no predictions to form ensemble predictions.")
@@ -303,7 +303,7 @@ class EnsembleSolution(BaseSolution):
         df_corr = df.copy()
         cols = list()
         for i, prediction in enumerate(predictions):
-            col = f"yhat_{i:03d}"
+            col = f"{yhat_name}_{i:03d}"
             df_corr[col] = self._check_prediction(prediction)[yhat_name]
             cols.append(col)
 
@@ -316,25 +316,17 @@ class EnsembleSolution(BaseSolution):
         yhat_pct_name: str = "prediction"
 
         valid_data = self.data_manager.get_data_helper_by_type(data_type=data_type)
-        eval_type: str = data_type
-
-        era = valid_data.groups_for_eval_
-
-        ret = self._ensemble_predictions(eval_type, groupby_col=era.name)
-        if ret.empty:
+        predictions = self._ensemble_predictions(data_type, groupby_col=valid_data.group_name_for_eval_)
+        if predictions.empty:
             logging.warning(f"skip inference since the ensemble predictions are empty")
             return self
 
-        ret[yhat_name] = ret.groupby(era.name)[yhat_name].apply(lambda x: pct_ranked(x))
-        yhat = ret[yhat_name]
-        ret = valid_data.evaluate(yhat=yhat, scoring_func=self.scoring_func)
-
+        ret = valid_data.evaluate(yhat=predictions[yhat_name], scoring_func=self.scoring_func)
         ret[1].to_parquet(os.path.join(self.working_dir, _scoreAllFilename.format(eval_type=data_type)))
         ret[2].to_parquet(os.path.join(self.working_dir, _scoreSplitFilename.format(eval_type=data_type)))
 
-        logging.info(f"rank predictions for regression modeling")
         valid_predictions = ret[0]
-        valid_predictions[yhat_pct_name] = valid_predictions.groupby(era.name)[yhat_name].apply(lambda x: pct_ranked(x))
+        valid_predictions[yhat_pct_name] = valid_data.pct_rank_normalize(valid_predictions[yhat_name])
 
         valid_predictions.to_parquet(
             os.path.join(self.working_dir, _predictionsParquetFilename.format(eval_type=data_type)))
@@ -347,15 +339,14 @@ class EnsembleSolution(BaseSolution):
         logging.info(f"inference on {data_type}")
         infer_data = self.data_manager.get_data_helper_by_type(data_type=data_type)
         X, y, groups = infer_data.data_
-        era = infer_data.groups_for_eval_
 
-        predictions = self._ensemble_predictions(data_type, groupby_col=era.name).reindex(index=y.index).reset_index()
+        predictions = self._ensemble_predictions(
+            data_type, groupby_col=infer_data.group_name_for_eval_).reindex(index=y.index).reset_index()
         if predictions.empty:
             logging.warning(f"skip inference since the ensemble predictions are empty")
             return self
 
-        predictions[yhat_pct_name] = predictions.groupby(era.name)[yhat_name].apply(lambda x: pct_ranked(x))
-
+        predictions[yhat_pct_name] = infer_data.pct_rank_normalize(predictions[yhat_name])
         predictions.to_parquet(
             os.path.join(self.working_dir, _predictionsParquetFilename.format(eval_type=data_type)))
         return predictions[yhat_pct_name]
