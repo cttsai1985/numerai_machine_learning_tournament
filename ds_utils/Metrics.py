@@ -1,4 +1,3 @@
-import logging
 import pandas as pd
 import numpy as np
 from functools import partial
@@ -12,7 +11,7 @@ def scale_uniform(series: pd.Series, middle: float = 0.5) -> pd.Series:
 
 
 def corr(y_true: Union[np.array, pd.Series], y_pred: pd.Series, func: Callable, **kwargs) -> float:
-    if func == spearmanr:
+    if func == pearsonr:
         y_pred = scale_uniform(y_pred)
 
     return func(y_true, y_pred)[0]  # correlation

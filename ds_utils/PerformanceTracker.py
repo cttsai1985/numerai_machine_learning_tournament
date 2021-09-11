@@ -1,8 +1,8 @@
 import logging
 import pandas as pd
-from typing import Optional, Callable, Any, Dict, List, Tuple, Union
+from typing import Optional, List
 
-from .Metrics import available_metrics
+from ds_utils.Metrics import available_metrics
 
 
 class PerformanceTracker:
