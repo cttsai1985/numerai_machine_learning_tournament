@@ -140,7 +140,7 @@ class NumerAPIHelper:
 
         return series
 
-    def evaluate_online_predictions(
+    def evaluate_online_diagnostics(
             self, model_name: Optional[str] = None, dir_path: Optional[str] = None, refresh: bool = False):
         if not dir_path:
             dir_path = self.root_dir_path
@@ -153,8 +153,8 @@ class NumerAPIHelper:
         # submit submission
         model_id = self.api.get_models()[model_name]  # get model_id
         logging.info(f"model w/ its model_id: {model_name} ({model_id})")
-        self.api.upload_predictions(os.path.join(dir_path, "tournament_predictions.csv"), model_id=model_id)
-
+        self.api.upload_predictions(
+            os.path.join(dir_path, "validation_predictions.csv"), model_id=model_id, version=2)
         # retrieve submission
         series = self.retrieve_submission_diagnostics(model_id)
 
@@ -172,4 +172,17 @@ class NumerAPIHelper:
         Path(self.result_dir_current_round_).mkdir(parents=True, exist_ok=True)
         df.to_csv(result_filepath)
         logging.info(f"write online diagnostics to {result_filepath}")
+        return self
+
+    def submit_prediction(
+            self, model_name: Optional[str] = None, dir_path: Optional[str] = None, refresh: bool = False):
+        if not dir_path:
+            dir_path = self.root_dir_path
+
+        filepath = os.path.join(dir_path, "tournament_predictions.csv")
+
+        # submit submission
+        model_id = self.api.get_models()[model_name]  # get model_id
+        logging.info(f"model w/ its model_id: {model_name} ({model_id})")
+        self.api.upload_predictions(filepath, model_id=model_id, version=2)
         return self
