@@ -5,35 +5,39 @@ import logging
 import hashlib
 import lightgbm
 import numpy as np
-import pandas as pd
 from copy import deepcopy
 from argparse import Namespace
 from pathlib import Path
-from functools import partial
 from typing import Optional, Callable, Any, Dict, List, Tuple, Union
 from sklearn.model_selection import BaseCrossValidator
 from sklearn.base import BaseEstimator
 from sklearn.model_selection import StratifiedKFold, LeavePGroupsOut, GroupKFold, PredefinedSplit
 from sklearn.metrics import make_scorer
-from scipy.stats import spearmanr
-from lightgbm import LGBMRegressor, LGBMClassifier
+import lightgbm as lgb
 
-from .PerformanceTracker import PerformanceTracker
-from . import Helper
-from .CustomSplit import TimeSeriesSplitGroups
-from .DataManager import DataManager
-from .Metrics import spearman_corr
-from .LGBMUtils import lgbm_spearman_eval_func, lgbm_mae_eval_func
-from .Utils import get_file_hash
+from ds_utils.PerformanceTracker import PerformanceTracker
+from ds_utils.CustomSplit import TimeSeriesSplitGroups
+from ds_utils.DataManager import DataManager
+from ds_utils import Helper
+from ds_utils import Metrics
+from ds_utils import LGBMUtils
+from ds_utils import Utils
 
 
 # Scikit-Learn
 def spearman_eval_scorer(y: np.ndarray, y_pred: np.ndarray, **kwargs):
-    return spearman_corr(y, y_pred)
+    return Metrics.spearman_corr.spearman_corr(y, y_pred)
+
+
+def pearson_eval_scorer(y: np.ndarray, y_pred: np.ndarray, **kwargs):
+    return Metrics.pearson_corr(y, y_pred)
 
 
 sklearn_spearman_scorer = make_scorer(
     spearman_eval_scorer, greater_is_better=True, needs_proba=False, needs_threshold=False, )
+
+sklearn_pearson_scorer = make_scorer(
+    pearson_eval_scorer, greater_is_better=True, needs_proba=False, needs_threshold=False, )
 
 _available_cv_splitter: Dict[str, Callable] = dict([
     ("StratifiedKFold", StratifiedKFold),
@@ -44,20 +48,23 @@ _available_cv_splitter: Dict[str, Callable] = dict([
 ])
 
 _available_model_gen: Dict[str, Callable] = dict([
-    ("LGBMRegressor", LGBMRegressor),
-    ("LGBMClassifier", LGBMClassifier),
+    ("LGBMRegressor", lgb.LGBMRegressor),
+    ("LGBMClassifier", lgb.LGBMClassifier),
+    ("LGBMRanker", lgb.LGBMRanker),
 ])
 
 _available_objective_func: Dict[str, Callable] = dict([
 ])
 
 _available_evaluation_func: Dict[str, Callable] = dict([
-    ("lightgbm_neg_spearman_corr", lgbm_spearman_eval_func),
-    ("lightgbm_mean_absolute_error", lgbm_mae_eval_func)
+    ("lightgbm_neg_spearman_corr", LGBMUtils.lgbm_spearman_eval_func),
+    ("lightgbm_neg_pearson_corr", LGBMUtils.lgbm_pearson_eval_func),
+    ("lightgbm_mean_absolute_error", LGBMUtils.lgbm_mae_eval_func)
 ])
 
 _available_sklearn_scorer: Dict[str, Callable] = dict([
     ("sklearn_spearman_scorer", sklearn_spearman_scorer),
+    ("sklearn_pearson_scorer", sklearn_pearson_scorer),
 ])
 
 
@@ -134,7 +141,7 @@ class BaseSolutionConfigs:
     @property
     def result_folder_name_(self) -> str:
         if self.configs_hash_str is None:
-            self.configs_hash_str = get_file_hash(self.configs_file_path)
+            self.configs_hash_str = Utils.get_file_hash(self.configs_file_path)
         return "_".join([self.model_name, self.configs_hash_str])
 
     @property
@@ -178,7 +185,7 @@ class SolutionConfigs(BaseSolutionConfigs):
 
         self.model_name: str = "baseline_lightgbm_optuna_fair_mae"
         self.model_gen_query: str = "LGBMRegressor"
-        self.model_gen: BaseEstimator = LGBMRegressor
+        self.model_gen: BaseEstimator = lgb.LGBMRegressor
         self.model_base_params: Dict[str, Any] = {
             "objective": "fair",
             "metric": ["rmse", "neg_spearman_corr"],
@@ -285,14 +292,14 @@ class SolutionConfigs(BaseSolutionConfigs):
 class EnsembleSolutionConfigs(BaseSolutionConfigs):
     def __init__(
             self, root_resource_path: str, configs_file_path: str = "configs.yaml", eval_data_type: str = None, ):
-        super().__init__(
-            root_resource_path=root_resource_path, configs_file_path=configs_file_path, eval_data_type=eval_data_type)
 
         self.model_name: str = "ensemble_base"
         self.ensemble_model_configs: Optional[List[SolutionConfigs]] = None
         self.model_dirs: Optional[List[str]] = None
 
-        self._load_yaml_configs(configs_file_path)
+        super().__init__(
+            root_resource_path=root_resource_path, configs_file_path=configs_file_path, eval_data_type=eval_data_type)
+
         self._configure_solution_from_yaml()
         # self._save_yaml_configs()
 
@@ -315,6 +322,9 @@ class EnsembleSolutionConfigs(BaseSolutionConfigs):
         return self
 
     def _save_yaml_configs(self, output_data_dir: Optional[str] = None):
+        raise NotImplementedError
+
+    def load_optimized_params_from_tuner(self, tuner):
         raise NotImplementedError
 
     @property
