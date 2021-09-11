@@ -9,8 +9,9 @@ class TimeSeriesSplitGroups(_BaseKFold):
     a version that will.
     """
 
-    def __init__(self, n_splits: int = 5):
+    def __init__(self, n_splits: int = 5, min_groups: int = 0):
         super().__init__(n_splits, shuffle=False, random_state=None)
+        self.min_groups: int = min_groups
 
     def _iter_test_indices(self, X: np.ndarray, y: Optional[np.ndarray] = None, groups: Optional[np.ndarray] = None):
         raise NotImplementedError()
@@ -20,12 +21,14 @@ class TimeSeriesSplitGroups(_BaseKFold):
         n_samples = _num_samples(X)
         n_splits = self.n_splits
         n_folds = n_splits + 1
-        group_list = np.unique(groups)
+        group_list = np.unique(groups).tolist()
         group_list.sort()
 
-        n_groups = len(group_list)
+        available_group_list = group_list[self.min_groups:]
+        n_groups = len(available_group_list)
         if n_folds > n_groups:
-            raise ValueError(f"Cannot have number of folds = {n_folds} greater than the number of samples: {n_groups}.")
+            raise ValueError(
+                f"Cannot have number of folds = {n_folds} greater than the number of samples: {available_group_list}.")
 
         indices = np.arange(n_samples)
         test_size = n_groups // n_folds
