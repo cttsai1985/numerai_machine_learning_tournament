@@ -120,7 +120,7 @@ def _organize_hyper_parameters_for_tuning(params: Dict[str, Any]) -> Dict[str, A
         if k not in params.values():
             continue
 
-        logging.info(f"add extra {v} hyper-parameter for {k}")
+        logging.info(f"add extra hyper-parameter for {k}: {v}")
         params_base.extend(v)
 
     for k, v in _NON_SUPPORTED_PARAMETERS_TO_DROP.items():

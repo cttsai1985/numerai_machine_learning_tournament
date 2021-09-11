@@ -107,17 +107,17 @@ class OptunaSklearnTuner(_BaseOptunaTuner):
 
     def _run(self, data_type: str = "training"):
         train_x, train_y, train_group = self.data_manager.get_data_helper_by_type(data_type).data_
-        if self.data_manager.has_cast_mapping(cast_type="label2index"):
+        is_classify: bool = self.data_manager.has_cast_mapping(cast_type="label2index")
+        if is_classify:
             self.base_params["num_class"] = train_y.nunique()
+            train_y = self.data_manager.cast_target(train_y, cast_type="label2index")
 
         tuner = OptunaSearchCV(
             self.model_gen(**self.base_params), self.param_distributions, cv=self.cv_splitter, enable_pruning=False,
             n_jobs=1, n_trials=10, random_state=self.seed, refit=False, return_train_score=True,
             scoring=self.scorer_func, study=None, subsample=1.0, timeout=None, verbose=0)
 
-        train_y = self.data_manager.cast_target(train_y, cast_type="label2index")
         tuner.fit(train_x, train_y)
-
         self.best_params = tuner.best_params
         self.best_params["n_estimators"] = self.num_boost_round
         logging.info(f"Best score from Tuning: {tuner.best_score:.6f} with hyper-parameters: {self.best_params}")
