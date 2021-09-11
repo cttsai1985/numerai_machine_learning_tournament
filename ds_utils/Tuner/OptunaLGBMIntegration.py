@@ -1,4 +1,5 @@
 import copy
+import gc
 import json
 import logging
 import numpy as np
@@ -10,6 +11,8 @@ from optuna.trial import FrozenTrial
 from optuna.integration._lightgbm_tuner.alias import _handling_alias_parameters
 from optuna.integration._lightgbm_tuner.optimize import _OptunaObjective, _OptunaObjectiveCV
 from optuna.integration.lightgbm import LightGBMTunerCV
+
+gc.enable()
 
 # Define key names of `Trial.system_attrs`.
 _LGBM_PARAMS_KEY = "lightgbm_tuner:lgbm_params"
@@ -172,6 +175,8 @@ class _CustomOptunaObjectiveCV(_OptunaObjectiveCV):
                 f'Parameter `{", ".join(not_supported_parameters)}` is not supported for tuning.')
 
     def _preprocess(self, trial: optuna.trial.Trial) -> None:
+        gc.collect(generation=2)
+
         if self.pbar is not None:
             self.pbar.set_description(self.pbar_fmt.format(self.step_name, self.best_score))
 
