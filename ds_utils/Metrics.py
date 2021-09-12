@@ -5,14 +5,12 @@ from typing import Optional, Callable, Any, Dict, List, Tuple, Union
 from sklearn import metrics
 from scipy.stats import spearmanr, pearsonr
 
-
-def scale_uniform(series: pd.Series, middle: float = 0.5) -> pd.Series:
-    return (series.rank(pct=True, method="first") - middle) / series.shape[0]
+from ds_utils import Utils
 
 
 def corr(y_true: Union[np.array, pd.Series], y_pred: pd.Series, func: Callable, **kwargs) -> float:
     if func == pearsonr:
-        y_pred = scale_uniform(y_pred)
+        y_pred = Utils.scale_uniform(y_pred)
 
     return func(y_true, y_pred)[0]  # correlation
 
@@ -27,11 +25,6 @@ def pearson_corr(y: np.ndarray, y_preds: np.ndarray, **kwargs) -> float:
 
 def median_absolute_error_fixed(y_true: np.array, y_pred: np.array, **kwargs) -> float:
     return metrics.median_absolute_error(y_true, y_pred)
-
-
-# Payout is just the score cliped at +/-25%
-def payout(scores: pd.Series, lower: float = -0.25, upper: float = .25) -> float:
-    return scores.clip(lower=lower, upper=upper)
 
 
 metric_spearman_corr = partial(corr, func=spearmanr)
