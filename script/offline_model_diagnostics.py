@@ -110,6 +110,7 @@ def compute_feature_neutral_mean(
 def _compute_meta_model_control(
         df: pd.DataFrame, column_group: str = "era", column_example: str = "example_prediction",
         column_prediction: str = "prediction", column_target: str = "target") -> pd.Series:
+    df.dropna(inplace=True)
     return df.groupby(column_group).apply(
         lambda x: DiagnosticUtils.meta_model_control(
             submit=x[column_prediction], example=x[column_example], target=x[column_target])).rename(
