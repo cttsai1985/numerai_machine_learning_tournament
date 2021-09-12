@@ -33,6 +33,6 @@ docker rm $(docker ps -a -q)
 CMD="jupyter notebook --port ${DockerRootPort1} --ip=0.0.0.0 --allow-root --no-browser"
 CMD="bash"
 
-echo docker run -i -t --gpus ${GPU_DEVICE} -p $RootPort1:$DockerRootPort1 -p $RootPort2:$DockerRootPort2 -e PYTHONPATH=/root/src -v ${RootSrcPath}:${DockerRootSrcPath} -v $(readlink -f ${DataPath}):${DockerDataPath} -v $(readlink -f ${DataCachedPath}):${DockerDataCachedPath} -v $(readlink -f ${OutputPath}):${DockerOutputPath} --shm-size $SHM_SIZE --workdir=${WORKDIR} $DOCKER_IMAGE $CMD
+echo docker run -i -t --gpus ${GPU_DEVICE} -p $RootPort1:$DockerRootPort1 -p $RootPort2:$DockerRootPort2 -e PYTHONPATH=/root/src -v ${RootSrcPath}:${DockerRootSrcPath} -v $(readlink -f ${DataPath}):${DockerDataPath} -v $(readlink -f ${DataCachedPath}):${DockerDataCachedPath} -v $(readlink -f ${OutputPath}):${DockerOutputPath} --shm-size $SHM_SIZE --workdir=${WORKDIR} --env-file env.local $DOCKER_IMAGE $CMD
 
-docker run -i -t --gpus ${GPU_DEVICE} -p $RootPort1:$DockerRootPort1 -p $RootPort2:$DockerRootPort2 -e PYTHONPATH=/root/src -v ${RootSrcPath}:${DockerRootSrcPath} -v $(readlink -f ${DataPath}):${DockerDataPath} -v $(readlink -f ${DataCachedPath}):${DockerDataCachedPath} -v $(readlink -f ${OutputPath}):${DockerOutputPath} --shm-size $SHM_SIZE --workdir=${WORKDIR} $DOCKER_IMAGE $CMD
+docker run -i -t --gpus ${GPU_DEVICE} -p $RootPort1:$DockerRootPort1 -p $RootPort2:$DockerRootPort2 -e PYTHONPATH=/root/src -v ${RootSrcPath}:${DockerRootSrcPath} -v $(readlink -f ${DataPath}):${DockerDataPath} -v $(readlink -f ${DataCachedPath}):${DockerDataCachedPath} -v $(readlink -f ${OutputPath}):${DockerOutputPath} --shm-size $SHM_SIZE --workdir=${WORKDIR} --env-file env.local $DOCKER_IMAGE $CMD
