@@ -75,6 +75,7 @@ class BaseSolution:
         raise NotImplementedError()
 
     def _do_validation(self, data_type: Optional[str] = None):
+        logging.info(f"inference on {data_type}")
         if data_type == "skip":
             return self
 
@@ -223,6 +224,10 @@ class Solution(BaseSolution):
         predictions = y.to_frame()
         predictions[yhat_name] = self.model.predict(X)
         predictions[yhat_pct_name] = infer_data.pct_rank_normalize(predictions[yhat_name])
+        predictions[infer_data.group_name_for_eval_] = infer_data.groups_for_eval_
+
+        predictions.to_parquet(
+            os.path.join(self.working_dir, _predictionsParquetFilename.format(eval_type=data_type)))
         return predictions[yhat_pct_name]
 
     def evaluate(self, train_data_type: str = "training", valid_data_type: str = "validation", ):
