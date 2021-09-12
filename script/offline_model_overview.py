@@ -46,6 +46,8 @@ def parse_commandline() -> argparse.Namespace:
         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument("--num-rows", type=int, default=500, help="display rows per attributes")
     parser.add_argument(
+        "--corr-type", type=str, default="Pearson", help="metric for correlation")
+    parser.add_argument(
         "--output-dir", type=str, default="./", help="output dir")
     parser.add_argument(
         "--output-pattern", type=str, default=default_output_pattern, help="destination to move output dirs")
@@ -89,37 +91,40 @@ if "__main__" == __name__:
     ds_utils.initialize_logger()
     ds_utils.configure_pandas_display()
 
-    _column_target: str = "target"
+    _column_objective: str = "objective"
     _column_path: str = "path"
-    _column_score: str = "Pearson"
     col_metric: str = "attr"
     root_resource_path: str = "../input/numerai_tournament_resource/"
 
     _args = parse_commandline()
-    file_pattern: str = os.path.join(
-        root_resource_path, _args.output_pattern, "validation_model_diagnostics.csv")
 
+    # read files
+    file_pattern: str = os.path.join(root_resource_path, _args.output_pattern, "validation_model_diagnostics.csv")
     df = dd.read_csv(os.path.join(file_pattern), include_path_column=True).compute()
 
     df[_column_path] = df[_column_path].apply(lambda x: Path(x).parts[-2])
     ret = df.set_index([_column_path, ]).groupby(
-        col_metric).apply(lambda x: compute(x[_column_score], _MetricsFuncMapping.get(x.name), num=_args.num_rows))
+        col_metric).apply(lambda x: compute(x[_args.corr_type], _MetricsFuncMapping.get(x.name), num=_args.num_rows))
     ret = ret.reset_index(_column_path)
-    ret[_column_target] = list(map(lambda x: _MetricsFuncMapping.get(x), ret.index.tolist()))
+    ret[_column_objective] = list(map(lambda x: _MetricsFuncMapping.get(x), ret.index.tolist()))
     ret = ret.groupby(col_metric).apply(
-        lambda x: x.reset_index()).reindex(columns=[_column_target, _column_score, _column_path])
+        lambda x: x.reset_index()).reindex(columns=[_column_objective, _args.corr_type, _column_path])
     ret = ret.loc[list(_MetricsFuncMapping.keys())]
 
     # multiple sub
-    allow_list: List[str] = list()
+    _allow_list: List[str] = list()
     _metric_selections: List[Tuple[str, float]] = [
-        ("corr sharpe", _args.min_corr_sharpe), ("corr std", _args.max_corr_std),
-        ("max draw down", _args.max_draw_down), ("corr with example predictions", _args.corr_cut_off)]
+        ("corr sharpe", _args.min_corr_sharpe),
+        ("corr std", _args.max_corr_std),
+        ("max draw down", _args.max_draw_down),
+        ("corr with example predictions", _args.corr_cut_off)
+    ]
 
     if _args.use_filter:
         _all_allow_list = filter_model_by_performance(
             data=ret, metric_selections=_metric_selections, column=_column_path)
 
+        logging.info(f"rows: {len(_allow_list)}, after filtered: {len(_all_allow_list)}")
         ret = ret.loc[ret[_column_path].isin(_all_allow_list)]
 
     logging.info(f"best models:\n{ret}")
