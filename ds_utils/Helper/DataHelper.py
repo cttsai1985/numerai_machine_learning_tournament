@@ -8,7 +8,8 @@ import dask.dataframe as dd
 import pandas as pd
 from pathlib import Path
 from typing import Optional, Callable, Any, Dict, List, Tuple
-from ds_utils.Utils import scale_uniform, natural_sort, pct_ranked
+from ds_utils.Utils import scale_uniform, pct_ranked, natural_sort
+from ds_utils.DiagnosticUtils import sharpe_ratio
 
 
 class DataHelper:
@@ -105,10 +106,10 @@ class DataHelper:
         neutralized_x = da.asarray(f).dot(da.asarray(np.linalg.pinv(f)).dot(scale_uniform_yhat)).compute()
 
         neutralized_yhat = scale_uniform_yhat - neutralized_x
-        ret = self.groups_.to_frame()
+        ret = self.groups_for_eval_.to_frame()
         ret["yhat"] = neutralized_yhat
-        ret["std"] = ret.groupby(self.group_name_).transform("std")
-        ret["yhat"] /= ret["std"]
+        ret["yhat_std"] = ret.groupby(self.group_name_for_eval_).transform("std")
+        ret["yhat"] /= ret["yhat_std"]
         return ret.reindex(columns=["yhat"]).squeeze()
 
     def evaluate(
@@ -129,7 +130,7 @@ class DataHelper:
         # all score
         score_all = scoring_func(
             self.y_, predictions[col_yhat], scoring_type=scoring_type).to_frame(self.group_name_for_eval_)
-        score_all["sharpe"] = score_split.mean() / score_split.std()
+        score_all["sharpe"] = sharpe_ratio(score_split)
         score_all = score_all.T
         logging.info(f"Performance:\n{score_all}\n\n{score_split}\n\n{score_split.describe()}")
         return predictions, score_all, score_split
