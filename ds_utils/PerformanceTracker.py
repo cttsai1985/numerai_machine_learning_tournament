@@ -14,9 +14,20 @@ class PerformanceTracker:
     def score(
             self, y_true: pd.Series, y_pred: pd.Series, sample_weight: Optional[pd.Series] = None,
             scoring_type: str = None):
-        return pd.Series(
-            {k: v["func"](**{"y_true": y_true, "y_pred": y_pred, "sample_weight": sample_weight}) for k, v in
-             self.metrics.items() if (scoring_type is None or scoring_type == v["type"])}, name="score")
+
+        metrics = self.metrics
+        if scoring_type is not None:
+            metrics = {k: v for k, v in self.metrics.items() if scoring_type == v["type"]}
+
+        mask = y_true.notna()
+        if not mask.all():
+            y_true = y_true[mask]
+            y_pred = y_pred[mask]
+            if sample_weight is not None:
+                sample_weight = sample_weight[mask]
+
+        data = {"y_true": y_true, "y_pred": y_pred, "sample_weight": sample_weight}
+        return pd.Series({k: v["func"](**data) for k, v in metrics.items()}, name="score")
 
 
 if "__main__" == __name__:
