@@ -35,8 +35,8 @@ def smart_sortino_ratio(data: pd.DataFrame, target: float = .02) -> pd.Series:
 
 
 def compute_neutralize(
-        data: pd.DataFrame, columns: List[str], neutralizers: List[str], proportion: float, normalize: bool):
-    scores = data[columns].values
+        data: pd.DataFrame, target_columns: List[str], neutralizers: List[str], proportion: float, normalize: bool):
+    scores = data[target_columns].values
     if normalize:
         scores2 = []
         for x in scores.T:
@@ -46,32 +46,18 @@ def compute_neutralize(
         scores = np.array(scores2).T
 
     exposures = data[neutralizers].values
-    scores -= proportion * exposures.dot(
-        np.linalg.pinv(exposures.astype(np.float32)).dot(scores.astype(np.float32)))
-
+    scores -= proportion * exposures.dot(np.linalg.pinv(exposures.astype(np.float32)).dot(scores.astype(np.float32)))
     scores /= scores.std(ddof=0)
-    return pd.Series(scores, index=data.index)
+    return pd.DataFrame(scores, columns=target_columns, index=data.index)
 
 
-def neutralize_by_era(
-        data: pd.DataFrame, columns: List[str], neutralizers: List[str], proportion: float = 1.0,
-        normalize: bool = True, column_group: str = "era"):
-    if not neutralizers:
-        raise ValueError()
-
-    return data.groupby(column_group).apply(lambda x: compute_neutralize(
-        x, columns=columns, neutralizers=neutralizers, proportion=proportion, normalize=normalize))
-
-
-def get_feature_neutral_mean(
-        data: pd.DataFrame, feature_cols: List[str], column_target: str, column_prediction: str,
-        column_group: str = "era") -> float:
-    # TODO: not test
-    data["neutral_sub"] = neutralize_by_era(
-        data, [column_prediction], feature_cols, column_group=column_group)[column_prediction]
-    scores = data.groupby(column_group).apply(
-        lambda x: (Utils.scale_uniform(x["neutral_sub"]).corr(x[column_target]))).mean()
-    return np.mean(scores)
+def feature_neutral_mean(
+        data: pd.DataFrame, feature_columns: List[str], proportion: float = 1.0, normalize: bool = True,
+        method: str = "pearson", column_prediction: str = "prediction", column_target: str = "target",) -> pd.Series:
+    data["neutral_sub"] = compute_neutralize(
+        data, target_columns=[column_prediction], neutralizers=feature_columns, proportion=proportion,
+        normalize=normalize)[column_prediction]
+    return Utils.scale_uniform(data["neutral_sub"]).corr(data[column_target], method=method)
 
 
 def compute_fast_score(

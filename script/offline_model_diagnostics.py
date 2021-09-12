@@ -84,6 +84,29 @@ def compute_fnc(filepath: str, columns: Optional[List[str]] = None, ) -> pd.Seri
     return df_corr.mean().rename("feature neutralized corr mean")
 
 
+def compute_feature_neutral_mean(
+        prediction_filepath: str, feature_filepath: str, feature_columns_filepath: str,
+        columns: Optional[List[str]] = None, column_group: str = "era", column_prediction: str = "prediction",
+        column_target: str = "target", proportion: float = 1., normalize: bool = True) -> pd.Series:
+    df = _read_dataframe(feature_filepath)
+    df_target = _read_dataframe(prediction_filepath)
+    df[column_prediction] = df_target[column_prediction]
+    with open(feature_columns_filepath, "r") as fp:
+        columns_feature = json.load(fp)
+
+    df["neutral_sub"] = df.groupby(column_group).apply(
+        lambda x: DiagnosticUtils.compute_neutralize(
+            x, target_columns=[column_prediction], neutralizers=columns_feature, proportion=proportion,
+            normalize=normalize))
+
+    results = dict()
+    groupby_df = df.groupby(column_group)
+    for method in columns:
+        results[method] = groupby_df.apply(lambda x: Utils.scale_uniform(x["neutral_sub"]).corr(
+                other=(x[column_target]), method=method.lower()))
+    return pd.DataFrame(results).mean().rename("feature neutralized corr mean")
+
+
 def _compute_meta_model_control(
         df: pd.DataFrame, column_group: str = "era", column_example: str = "example_prediction",
         column_prediction: str = "prediction", column_target: str = "target") -> pd.Series:
@@ -160,14 +183,13 @@ def compute_max_feature_exposure(
     with open(feature_columns_filepath, "r") as fp:
         columns_feature = json.load(fp)
 
-    df = dd.from_pandas(df, npartitions=df[column_group].nunique())
     groupby_df = df.groupby(column_group)
     results = dict()
     for method in columns:
         results[method] = groupby_df.apply(
             lambda d: max_feature_exposure(
                 d, method=method.lower(), columns_feature=columns_feature, column_prediction=column_prediction))
-    return pd.DataFrame(results).mean().compute(20).rename("max feature exposure")
+    return pd.DataFrame(results).mean().rename("max feature exposure")
 
 
 def parse_commandline() -> argparse.Namespace:
@@ -220,7 +242,11 @@ def compute(
     func_list: List[Tuple[str, Callable, Dict[str, Any]]] = [
         ("valid_sharpe", compute_sharpe, dict(filepath=score_split_file_path, columns=columns_corr)),
         ("valid_corr", compute_corr_mean, dict(filepath=score_split_file_path, columns=columns_corr)),
-        # ("valid_fnc", compute_fnc, dict(filepath=feature_neutral_corr_file_path, columns=columns_corr)),
+        ("valid_feature_neutral_corr", compute_feature_neutral_mean,
+         dict(prediction_filepath=prediction_file_path, feature_filepath=feature_file_path,
+              feature_columns_filepath=feature_columns_file_path, columns=columns_corr, column_group=column_group,
+              column_prediction=column_prediction, column_target=column_target, proportion=1., normalize=True)),
+        # ("valid_fnc", compute_fnc, dict(filepath=feature_neutral_corr_file_path, target_columns=columns_corr)),
         ("valid_smart_sharpe", compute_smart_sharpe, dict(filepath=score_split_file_path, columns=columns_corr)),
         ("valid_smart_sortino_ratio", compute_smart_sortino_ratio,
          dict(filepath=score_split_file_path, columns=columns_corr)),
