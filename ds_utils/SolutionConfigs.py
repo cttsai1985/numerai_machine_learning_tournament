@@ -106,11 +106,11 @@ class BaseSolutionConfigs:
         default_file_path: str = os.path.join(self.meta_data_dir, "features_numerai.json")
         if feature_columns_file_path is None:
             file_path = default_file_path
-            logging.info(f"load feature columns from default location: {feature_columns_file_path}")
+            logging.info(f"load feature target_columns from default location: {feature_columns_file_path}")
 
         if not all([os.path.exists(feature_columns_file_path), os.path.isfile(feature_columns_file_path)]):
             file_path = default_file_path
-            logging.info(f"load feature columns from default location: {file_path}")
+            logging.info(f"load feature target_columns from default location: {file_path}")
 
         with open(file_path, "r") as fp:
             self.columns_feature = json.load(fp)
