@@ -4,6 +4,7 @@ import json
 import argparse
 import logging
 import pandas as pd
+from dask import dataframe as dd
 from pathlib import Path
 
 EXTERNAL_UTILS_LIB = os.path.join(Path().resolve().parent)
@@ -13,16 +14,15 @@ import ds_utils
 from ds_utils import SolutionConfigs
 
 
-def compute(root_data_path: str, root_prediction_path: str) -> pd.DataFrame:
-    data_file_path: str = os.path.join(root_data_path, "numerai_tournament_data.parquet")
-    prediction_file_path: str = os.path.join(root_prediction_path, "tournament_predictions.parquet")
+def compute(root_prediction_path: str) -> pd.DataFrame:
     output_file_path: str = os.path.join(
         root_prediction_path, "_".join(["prediction", "diagnostics.{filename_extension}"]))
 
-    df = pd.read_parquet(data_file_path, columns=["id", "data_type", "era"]).set_index("id")
-    df_preds = pd.read_parquet(prediction_file_path).set_index("id")
-    df["prediction"] = df_preds["yhat"]
-    group_df = df.groupby(["data_type", "era"])["prediction"].describe().groupby(level=0)
+    df = dd.read_parquet(
+        [os.path.join(root_prediction_path, "tournament_predictions.parquet"),
+         os.path.join(root_prediction_path, "validation_predictions.parquet")], aggregate_files=True).compute()
+
+    group_df = df.groupby(["era"])["yhat"].describe().groupby(level=0)
     df_mean = group_df.mean()
     df_mean["stats"] = "mean"
     df_std = group_df.std().dropna()
@@ -50,9 +50,6 @@ if "__main__" == __name__:
     ds_utils.configure_pandas_display()
 
     root_resource_path: str = "../input/numerai_tournament_resource/"
-    dataset_name: str = "latest_tournament_datasets"
     _args = parse_commandline()
     configs = SolutionConfigs(root_resource_path=root_resource_path, configs_file_path=_args.configs)
-
-    _root_data_path = os.path.join(root_resource_path, dataset_name)
-    compute(root_data_path=_root_data_path, root_prediction_path=configs.output_dir_, )
+    compute(root_prediction_path=configs.output_dir_, )
