@@ -40,7 +40,7 @@ def compute(data: pd.Series, func: str, num: int = 10) -> pd.Series:
 
 
 def parse_commandline() -> argparse.Namespace:
-    default_output_pattern: str = "lightgbm_optuna*"
+    default_output_pattern: str = "*"
     parser = argparse.ArgumentParser(
         description="execute a series of scripts", add_help=True,
         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
@@ -91,7 +91,7 @@ if "__main__" == __name__:
 
     _column_target: str = "target"
     _column_path: str = "path"
-    _column_score: str = "Spearman"
+    _column_score: str = "Pearson"
     col_metric: str = "attr"
     root_resource_path: str = "../input/numerai_tournament_resource/"
 
