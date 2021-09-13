@@ -108,6 +108,7 @@ if "__main__" == __name__:
     file_pattern: str = os.path.join(root_resource_path, _args.output_pattern, "validation_model_diagnostics.csv")
     df = dd.read_csv(os.path.join(file_pattern), include_path_column=True).compute()
 
+    df = df.loc[df[col_metric].isin(_MetricsFuncMapping.keys())]
     df[_column_path] = df[_column_path].apply(lambda x: Path(x).parts[-2])
     ret = df.set_index([_column_path, ]).groupby(
         col_metric).apply(lambda x: compute(x[_args.corr_type], _MetricsFuncMapping.get(x.name), num=_args.num_rows))
