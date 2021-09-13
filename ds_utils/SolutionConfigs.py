@@ -135,10 +135,10 @@ class BaseSolutionConfigs:
         return self
 
     def _save_yaml_configs(self, output_data_dir: Optional[str] = None):
-        raise NotImplementedError
+        raise NotImplementedError()
 
     def load_optimized_params_from_tuner(self, tuner):
-        raise NotImplementedError
+        raise NotImplementedError()
 
     @property
     def result_folder_name_(self) -> str:
@@ -160,15 +160,15 @@ class BaseSolutionConfigs:
 
     @property
     def unfitted_model_(self) -> BaseEstimator:
-        raise NotImplementedError
+        raise NotImplementedError()
 
     @property
     def template_cv_splitter_(self) -> BaseCrossValidator:
-        raise NotImplementedError
+        raise NotImplementedError()
 
     @property
     def cv_splitter_(self) -> BaseCrossValidator:
-        raise NotImplementedError
+        raise NotImplementedError()
 
     @classmethod
     def from_config_file(cls, file_path: str):
@@ -223,7 +223,7 @@ class SolutionConfigs(BaseSolutionConfigs):
         self.feval = _available_evaluation_func.get(self.feval_gen)
         self.scorer_func = _available_sklearn_scorer.get(self.scorer_func_query)
 
-        if "Classifier" in self.model_gen_query:
+        if any(map(lambda x: self.model_gen_query.startswith(x), ["Classifier", "Ranker"])):
             logging.info(f"enable label2index mapping: {self.label2index}, index2label mapping: {self.index2label}")
             self.label2index: Dict[int, float] = {0: .0, 1: .25, 2: .5, 3: .75, 4: 1.}
             self.index2label: Dict[float, int] = {v: k for k, v in self.label2index.items()}
@@ -324,22 +324,77 @@ class EnsembleSolutionConfigs(BaseSolutionConfigs):
         return self
 
     def _save_yaml_configs(self, output_data_dir: Optional[str] = None):
-        raise NotImplementedError
+        raise NotImplementedError()
 
     def load_optimized_params_from_tuner(self, tuner):
-        raise NotImplementedError
+        raise NotImplementedError()
 
     @property
     def unfitted_model_(self) -> BaseEstimator:
-        raise NotImplementedError
+        raise NotImplementedError()
 
     @property
     def template_cv_splitter_(self) -> BaseCrossValidator:
-        raise NotImplementedError
+        raise NotImplementedError()
 
     @property
     def cv_splitter_(self) -> BaseCrossValidator:
-        raise NotImplementedError
+        raise NotImplementedError()
+
+    @classmethod
+    def from_config_file(cls, file_path: str):
+        pass
+
+
+class NeutralizeSolutionConfigs(BaseSolutionConfigs):
+    def __init__(
+            self, root_resource_path: str, configs_file_path: str = "configs.yaml", eval_data_type: str = None, ):
+
+        self.model_name: str = "neutralize_base"
+        self.neutralize_model_configs: Optional[SolutionConfigs] = None
+        self.model_dir: Optional[str] = None
+
+        self.neutralizers: Optional[List[str]] = None
+        self.proportion: float = 1.
+        self.normalize: bool = True
+
+        super().__init__(
+            root_resource_path=root_resource_path, configs_file_path=configs_file_path, eval_data_type=eval_data_type)
+
+        self._configure_solution_from_yaml()
+        # self._save_yaml_configs()
+
+    def _configure_solution_from_yaml(self, ):
+        _config_filepath: str = self.neutralize_model_configs
+        if not (os.path.exists(_config_filepath) and os.path.isfile(_config_filepath)):
+            logging.error(f"configs does not exist: {_config_filepath}")
+            raise FileExistsError(f"configs does not exist: {_config_filepath}")
+
+        _configs = SolutionConfigs(
+            root_resource_path=self.root_resource_path, configs_file_path=_config_filepath,
+            eval_data_type=self.eval_data_type, )
+        logging.info(f"load configs: {_configs}, from location: {_configs.output_dir_}")
+        self.ensemble_model_configs = _configs
+        self.model_dir = self.ensemble_model_configs.output_dir_
+        return self
+
+    def _save_yaml_configs(self, output_data_dir: Optional[str] = None):
+        raise NotImplementedError()
+
+    def load_optimized_params_from_tuner(self, tuner):
+        raise NotImplementedError()
+
+    @property
+    def unfitted_model_(self) -> BaseEstimator:
+        raise NotImplementedError()
+
+    @property
+    def template_cv_splitter_(self) -> BaseCrossValidator:
+        raise NotImplementedError()
+
+    @property
+    def cv_splitter_(self) -> BaseCrossValidator:
+        raise NotImplementedError()
 
     @classmethod
     def from_config_file(cls, file_path: str):

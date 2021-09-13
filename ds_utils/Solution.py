@@ -21,6 +21,8 @@ _scoreTargetAllFilename: str = "{eval_type}_score_all_{target}.parquet"
 _predictionsParquetFilename: str = "{eval_type}_predictions.parquet"
 _predictionsCsvFilename: str = "{eval_type}_predictions.csv"
 
+_EPSILON: float = sys.float_info.min
+
 
 class BaseSolution:
     def __init__(
@@ -269,6 +271,7 @@ class EnsembleSolution(BaseSolution):
             refresh_level=refresh_level, data_manager=data_manager, scoring_func=scoring_func, working_dir=working_dir)
         self.ensemble_method: str = ensemble_method
         self.solution_dirs: List[str] = solution_dirs
+        self.is_fitted: bool = True
 
     def _do_cross_val(self, data_type: Optional[str] = None):
         raise NotImplementedError()
@@ -330,7 +333,90 @@ class EnsembleSolution(BaseSolution):
         yhat_pct_name: str = "prediction"
 
         valid_data = self.data_manager.get_data_helper_by_type(data_type=data_type)
-        predictions = self._ensemble_predictions(data_type, groupby_col=valid_data.group_name_for_eval_)
+        y = valid_data.y_
+        predictions = self._ensemble_predictions(
+            data_type, groupby_col=valid_data.group_name_for_eval_).reindex(index=y.index)
+        if predictions.empty:
+            logging.warning(f"skip inference since the ensemble predictions are empty")
+            return self
+
+        ret = valid_data.evaluate(yhat=predictions[yhat_name], scoring_func=self.scoring_func)
+        ret[1].to_parquet(os.path.join(self.working_dir, _scoreAllFilename.format(eval_type=data_type)))
+        ret[2].to_parquet(os.path.join(self.working_dir, _scoreSplitFilename.format(eval_type=data_type)))
+
+        valid_predictions = ret[0]
+        valid_predictions[yhat_pct_name] = valid_data.pct_rank_normalize(valid_predictions[yhat_name])
+
+        valid_predictions.to_parquet(
+            os.path.join(self.working_dir, _predictionsParquetFilename.format(eval_type=data_type)))
+        return valid_predictions[yhat_pct_name]  # .clip(lower=0. + _EPSILON, upper=1. - _EPSILON)
+
+    def _do_inference_for_tournament(self, data_type: str) -> pd.Series:
+        yhat_name: str = "yhat"
+        yhat_pct_name: str = "prediction"
+
+        infer_data = self.data_manager.get_data_helper_by_type(data_type=data_type)
+        y = infer_data.y_
+
+        predictions = self._ensemble_predictions(
+            data_type, groupby_col=infer_data.group_name_for_eval_).reindex(index=y.index)
+        if predictions.empty:
+            logging.warning(f"skip inference since the ensemble predictions are empty")
+            return self
+
+        predictions[yhat_pct_name] = infer_data.pct_rank_normalize(predictions[yhat_name])
+        predictions.to_parquet(
+            os.path.join(self.working_dir, _predictionsParquetFilename.format(eval_type=data_type)))
+        return predictions[yhat_pct_name]  # .clip(lower=0. + _EPSILON, upper=1. - _EPSILON)
+
+    def evaluate(self, train_data_type: str = "training", valid_data_type: str = "validation", ):
+        self._do_validation(data_type=valid_data_type)
+        return self
+
+    def run(self, train_data_type: str = "training", infer_data_type: str = "tournament", ):
+        self._do_inference(data_type=infer_data_type)
+        return self
+
+    def save_model(self):
+        raise NotImplementedError()
+
+    def load_model(self):
+        raise NotImplementedError()
+
+    @classmethod
+    def from_configs(cls, args: Namespace, configs: "SolutionConfigs", output_data_path: str, **kwargs):
+        return cls(
+            args.refresh_level, configs.data_manager_, configs.ensemble_method, configs.model_dirs,
+            scoring_func=configs.scoring_func, working_dir=output_data_path, **kwargs)
+
+
+class NeutralizeSolution(BaseSolution):
+    def __init__(
+            self, refresh_level: RefreshLevel, data_manager: "DataManager",
+            scoring_func: Optional[Callable] = None, working_dir: Optional[str] = None,
+            **kwargs):
+        super().__init__(
+            refresh_level=refresh_level, data_manager=data_manager, scoring_func=scoring_func, working_dir=working_dir)
+
+    def _do_cross_val(self, data_type: Optional[str] = None):
+        raise NotImplementedError()
+
+    def _do_model_fit_for_training(self, data_type: str):
+        raise NotImplementedError()
+
+    @staticmethod
+    def _check_prediction(df: pd.DataFrame) -> pd.DataFrame:
+        if "id" in df.columns:
+            df = df.set_index("id")
+
+        return df
+
+    def _do_inference_for_validation(self, data_type: str) -> pd.Series:
+        yhat_name: str = "yhat"
+        yhat_pct_name: str = "prediction"
+
+        valid_data = self.data_manager.get_data_helper_by_type(data_type=data_type)
+        predictions = pd.DataFrame()  # TODO: Neutralize
         if predictions.empty:
             logging.warning(f"skip inference since the ensemble predictions are empty")
             return self
