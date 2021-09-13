@@ -14,15 +14,16 @@ EXTERNAL_UTILS_LIB = os.path.join(Path().resolve().parent)
 sys.path.insert(0, EXTERNAL_UTILS_LIB)
 
 import ds_utils
+from numerai_utils import NumerAPIHelper
 
 _MetricsFuncMapping = {
     "corr sharpe": "nlargest",
     "corr mean": "nlargest",
-    "feature neutralized corr mean": "nlargest",
+    # "feature neutralized corr mean": "nlargest",
     "payout": "nlargest",
 
     "corr std": "nsmallest",
-    "max feature exposure": "nsmallest",
+    # "max feature exposure": "nsmallest",
     "max draw down": "nlargest",
 
     "corr + mmc sharpe": "nlargest",
@@ -52,28 +53,33 @@ def parse_commandline() -> argparse.Namespace:
     parser.add_argument(
         "--output-pattern", type=str, default=default_output_pattern, help="destination to move output dirs")
     parser.add_argument(
-        "--corr-cut-off", type=float, default=.9625, help="max corr with example predictions")
+        "--corr-cut-off", type=float, default=.72, help="max corr with example predictions")
     parser.add_argument(
-        "--max-draw-down", type=float, default=-.045, help="max draw down cut off")
+        "--max-draw-down", type=float, default=-100., help="max draw down cut off")
     parser.add_argument(
-        "--max-corr-std", type=float, default=.0285, help="max corr std cut off")
+        "--max-corr-std", type=float, default=1., help="max corr std cut off")
     parser.add_argument(
-        "--min-corr-sharpe", type=float, default=.825, help="min sharpe ratio cut off")
+        "--min-mmc", type=float, default=0., help="max corr std cut off")
+    parser.add_argument(
+        "--max-corr-mmc-sharpe", type=float, default=0., help="max corr std cut off")
+    parser.add_argument(
+        "--min-corr-sharpe", type=float, default=0., help="min sharpe ratio cut off")
     parser.add_argument("--use-filter", action="store_true", help="use filter to select output")
     args = parser.parse_args()
     return args
 
 
 def filter_model_by_performance(
-        data: pd.DataFrame, metric_selections: List[Tuple[str, Any]], column: str = "path") -> List[str]:
+        data: pd.DataFrame, metric_selections: List[Tuple[str, Any]], column_score: str,
+        column: str = "path") -> List[str]:
     allow_list: List[str] = list()
     for _metric, _cutoff in metric_selections:
         _cmp = _MetricsFuncMapping[_metric]
         sub = data.loc[_metric,]
         if _cmp == "nsmallest":
-            mask = sub[_column_score] <= _cutoff
+            mask = sub[column_score] <= _cutoff
         if _cmp == "nlargest":
-            mask = sub[_column_score] >= _cutoff
+            mask = sub[column_score] >= _cutoff
 
         logging.info(f"{_metric} cutoff={_cutoff:.3f}: {mask.sum()}")
         allow_list.append(sub[column].loc[mask].tolist())
@@ -117,18 +123,23 @@ if "__main__" == __name__:
         ("corr sharpe", _args.min_corr_sharpe),
         ("corr std", _args.max_corr_std),
         ("max draw down", _args.max_draw_down),
+        ("mmc mean", _args.min_mmc),
+        ("corr + mmc sharpe", _args.max_corr_mmc_sharpe),
         ("corr with example predictions", _args.corr_cut_off)
     ]
 
     if _args.use_filter:
         _all_allow_list = filter_model_by_performance(
-            data=ret, metric_selections=_metric_selections, column=_column_path)
+            data=ret, metric_selections=_metric_selections, column_score=_args.corr_type, column=_column_path)
 
         logging.info(f"rows: {len(_allow_list)}, after filtered: {len(_all_allow_list)}")
         ret = ret.loc[ret[_column_path].isin(_all_allow_list)]
 
+    helper = NumerAPIHelper(root_dir_path=root_resource_path,)
+    Path(helper.result_dir_current_round_).mkdir(parents=True, exist_ok=True)
     logging.info(f"best models:\n{ret}")
-    output_filepath = os.path.join(_args.output_dir, "summary.txt")
+    ret.to_csv(os.path.join(helper.result_dir_current_round_, "summary.csv"), index=True)
+    output_filepath = os.path.join(helper.result_dir_current_round_, "summary.txt")
     with open(output_filepath, "w") as f:
         f.write(ret.to_string())
         logging.info(f"write the ranking results to: {output_filepath}")

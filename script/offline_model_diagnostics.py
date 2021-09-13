@@ -103,7 +103,7 @@ def compute_feature_neutral_mean(
     groupby_df = df.groupby(column_group)
     for method in columns:
         results[method] = groupby_df.apply(lambda x: Utils.scale_uniform(x["neutral_sub"]).corr(
-                other=(x[column_target]), method=method.lower()))
+            other=(x[column_target]), method=method.lower()))
     return pd.DataFrame(results).mean().rename("feature neutralized corr mean")
 
 
@@ -206,7 +206,8 @@ def parse_commandline() -> argparse.Namespace:
 def compute(
         root_data_path: str, root_prediction_path: str, eval_data_type: str = "validation",
         columns_corr: Optional[List[str]] = None, column_group: str = "era", column_example: str = "example_prediction",
-        column_prediction: str = "prediction", column_target: str = "target", **kwargs) -> pd.DataFrame:
+        column_prediction: str = "prediction", column_target: str = "target",
+        allow_func_list: Optional[List[str]] = None, **kwargs) -> pd.DataFrame:
     if eval_data_type not in ["training", "validation"]:
         logging.info(f"eval_data_type is not allowed: {eval_data_type}")
         return pd.DataFrame()
@@ -247,7 +248,7 @@ def compute(
          dict(prediction_filepath=prediction_file_path, feature_filepath=feature_file_path,
               feature_columns_filepath=feature_columns_file_path, columns=columns_corr, column_group=column_group,
               column_prediction=column_prediction, column_target=column_target, proportion=1., normalize=True)),
-        # ("valid_fnc", compute_fnc, dict(filepath=feature_neutral_corr_file_path, target_columns=columns_corr)),
+        ("valid_fnc", compute_fnc, dict(filepath=feature_neutral_corr_file_path, target_columns=columns_corr)),
         ("valid_smart_sharpe", compute_smart_sharpe, dict(filepath=score_split_file_path, columns=columns_corr)),
         ("valid_smart_sortino_ratio", compute_smart_sortino_ratio,
          dict(filepath=score_split_file_path, columns=columns_corr)),
@@ -282,6 +283,7 @@ def compute(
         func_list += func_list_with_mmc
 
     # doing the real computing here
+    func_list = list(filter(lambda x: x[0] in allow_func_list, func_list))
     ret_collect = list()
     for i in func_list:
         name, func, params = i
@@ -310,14 +312,31 @@ if "__main__" == __name__:
     _root_data_path = os.path.join(root_resource_path, dataset_name)
     _columns_corr: List[str] = ["Spearman", "Pearson"]
 
+    allow_func_list: List[str] = [
+        "valid_sharpe",
+        "valid_corr",
+        # "valid_feature_neutral_corr",
+        # "valid_fnc",
+        "valid_smart_sharpe",
+        "valid_smart_sortino_ratio",
+        "valid_payout",
+        "valid_std",
+        # "max_feature_exposure",
+        "max_draw_down",
+        "corr_plus_mmc_sharpe",
+        "mmc_mean",
+        "corr_plus_mmc_sharpe_diff",
+        "corr_with_example"
+    ]
+
     cross_val_summary = compute(
         root_data_path=_root_data_path, root_prediction_path=configs.output_dir_, eval_data_type="training",
         columns_corr=_columns_corr, column_group="era", column_example="example_prediction",
-        column_prediction="prediction", column_target=configs.column_target)
+        column_prediction="prediction", column_target=configs.column_target, allow_func_list=allow_func_list)
     validation_summary = compute(
         root_data_path=_root_data_path, root_prediction_path=configs.output_dir_, eval_data_type="validation",
         columns_corr=_columns_corr, column_group="era", column_example="example_prediction",
-        column_prediction="prediction", column_target=configs.column_target)
+        column_prediction="prediction", column_target=configs.column_target, allow_func_list=allow_func_list)
 
     if not (cross_val_summary.empty or validation_summary.empty):
         diff_summary = (validation_summary - cross_val_summary).dropna().reindex(index=cross_val_summary.index)
