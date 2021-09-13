@@ -1,7 +1,6 @@
 import sys
 import os
 import json
-import re
 import joblib
 import logging
 import pandas as pd
@@ -14,10 +13,11 @@ from sklearn.model_selection import BaseCrossValidator
 from sklearn.base import BaseEstimator
 
 from .DefaultConfigs import RefreshLevel
-from ds_utils import Utils
 
 _scoreSplitFilename: str = "{eval_type}_score_split.parquet"
 _scoreAllFilename: str = "{eval_type}_score_all.parquet"
+_scoreTargetSplitFilename: str = "{eval_type}_score_split_{target}.parquet"
+_scoreTargetAllFilename: str = "{eval_type}_score_all_{target}.parquet"
 _predictionsParquetFilename: str = "{eval_type}_predictions.parquet"
 _predictionsCsvFilename: str = "{eval_type}_predictions.csv"
 
@@ -203,6 +203,15 @@ class Solution(BaseSolution):
         X, y, groups = valid_data.data_
         yhat = pd.Series(self.model.predict(X), index=y.index, name=yhat_name)
 
+        # target for learning
+        if valid_data.y_name_ != "target":
+            ret = valid_data.evaluate(yhat=yhat, scoring_func=self.scoring_func, eval_training_target=True)
+            ret[1].to_parquet(os.path.join(
+                self.working_dir, _scoreTargetAllFilename.format(eval_type=data_type, target=valid_data.y_name_)))
+            ret[2].to_parquet(os.path.join(
+                self.working_dir, _scoreTargetSplitFilename.format(eval_type=data_type, target=valid_data.y_name_)))
+
+        # target for eval
         ret = valid_data.evaluate(yhat=yhat, scoring_func=self.scoring_func)
         ret[1].to_parquet(os.path.join(self.working_dir, _scoreAllFilename.format(eval_type=data_type)))
         ret[2].to_parquet(os.path.join(self.working_dir, _scoreSplitFilename.format(eval_type=data_type)))

@@ -2,8 +2,6 @@ import os
 import yaml
 import json
 import logging
-import hashlib
-import lightgbm
 import numpy as np
 from copy import deepcopy
 from argparse import Namespace
@@ -14,6 +12,7 @@ from sklearn.base import BaseEstimator
 from sklearn.model_selection import StratifiedKFold, LeavePGroupsOut, GroupKFold, PredefinedSplit
 from sklearn.metrics import make_scorer
 import lightgbm as lgb
+import xgboost as xgb
 
 from ds_utils.PerformanceTracker import PerformanceTracker
 from ds_utils.CustomSplit import TimeSeriesSplitGroups
@@ -51,6 +50,9 @@ _available_model_gen: Dict[str, Callable] = dict([
     ("LGBMRegressor", lgb.LGBMRegressor),
     ("LGBMClassifier", lgb.LGBMClassifier),
     ("LGBMRanker", lgb.LGBMRanker),
+    ("XGBRegressor", xgb.XGBRegressor),
+    ("XGBMClassifier", xgb.XGBClassifier),
+    ("XGBRanker", xgb.XGBRanker),
 ])
 
 _available_objective_func: Dict[str, Callable] = dict([

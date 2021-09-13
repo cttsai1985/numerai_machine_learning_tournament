@@ -7,7 +7,7 @@ import pandas as pd
 from pathlib import Path
 from typing import Optional, Callable, Any, Dict, List, Tuple
 from ds_utils import Utils
-from ds_utils.DiagnosticUtils import sharpe_ratio, compute_neutralize
+from ds_utils import DiagnosticUtils
 
 
 class DataHelper:
@@ -17,6 +17,7 @@ class DataHelper:
         self.filename: str = filename
         self.dataset_type: str = dataset_type
         self.col_target: str = col_target
+        self.col_target_for_eval: str = "target"
         self.cols_feature: List[str] = cols_feature
         self.cols_group: Optional[List[str]] = cols_group
         self.cols_group_for_eval: List[str] = ["era"]
@@ -104,14 +105,23 @@ class DataHelper:
         data = pd.concat([self.X_, yhat.rename(col_yhat), self.groups_for_eval_], axis=1)
         predictions = yhat.to_frame()
         predictions[col_neutral] = data.groupby(self.group_name_for_eval_).apply(
-            lambda x: compute_neutralize(
+            lambda x: DiagnosticUtils.compute_neutralize(
                 x, target_columns=[col_yhat], neutralizers=neutralizers, proportion=proportion,
                 normalize=normalize))
         return predictions[col_neutral].rename(col_yhat)
 
     def evaluate(
             self, yhat: pd.Series, scoring_func: Callable, col_yhat: str = "yhat", feature_neutral: bool = False,
-            **kwargs) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+            eval_training_target: bool = False, **kwargs) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+
+        group_name = self.group_name_for_eval_
+        groups = self.groups_for_eval_
+
+        y = self.y_for_eval_
+        y_name = self.y_name_for_eval_
+        if eval_training_target:
+            y = self.y_
+            y_name = self.y_name_
 
         scoring_type = None
         if feature_neutral:
@@ -119,17 +129,17 @@ class DataHelper:
             yhat = self.feature_neutralize(yhat)
             scoring_type = "corr"
 
-        predictions = pd.concat([self.y_, yhat.rename(col_yhat), self.groups_for_eval_], axis=1)
-        score_split = predictions.groupby(self.group_name_for_eval_).apply(
-            lambda x: scoring_func(x[self.y_.name], x[col_yhat], scoring_type=scoring_type))
+        predictions = pd.concat([y, yhat.rename(col_yhat), groups], axis=1)
+        score_split = predictions.groupby(group_name).apply(
+            lambda x: scoring_func(x[y_name], x[col_yhat], scoring_type=scoring_type))
         score_split = score_split.reindex(index=Utils.natural_sort(score_split.index.tolist()))
 
         # all score
         score_all = scoring_func(
-            self.y_, predictions[col_yhat], scoring_type=scoring_type).to_frame(self.group_name_for_eval_)
-        score_all["sharpe"] = sharpe_ratio(score_split)
+            y, predictions[col_yhat], scoring_type=scoring_type).to_frame(group_name)
+        score_all["sharpe"] = DiagnosticUtils.sharpe_ratio(score_split)
         score_all = score_all.T
-        logging.info(f"Performance:\n{score_all}\n\n{score_split}\n\n{score_split.describe()}")
+        logging.info(f"Performance on target: {y_name}:\n{score_all}\n\n{score_split}\n\n{score_split.describe()}")
         return predictions, score_all, score_split
 
     def save(self, filepath: Optional[str] = None):
@@ -175,8 +185,21 @@ class DataHelper:
         return data.squeeze().astype("float")
 
     @property
+    def y_name_(self) -> str:
+        return self.col_target
+
+    @property
+    def y_for_eval_(self) -> pd.Series:
+        data = self._read_data(columns=[self.col_target_for_eval])
+        return data.squeeze().astype("float")
+
+    @property
+    def y_name_for_eval_(self) -> str:
+        return self.col_target_for_eval
+
+    @property
     def X_(self) -> pd.DataFrame:
-        return self._read_data(columns=self.cols_feature)
+        return self._read_data(columns=self.cols_feature).astype(np.float16)
 
     @property
     def data_(self) -> Tuple[pd.DataFrame, pd.Series, pd.Series]:

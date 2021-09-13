@@ -329,14 +329,17 @@ if "__main__" == __name__:
         "corr_with_example"
     ]
 
+    _column_target = configs.column_target
+    _column_target: str = "target"
+
     cross_val_summary = compute(
         root_data_path=_root_data_path, root_prediction_path=configs.output_dir_, eval_data_type="training",
         columns_corr=_columns_corr, column_group="era", column_example="example_prediction",
-        column_prediction="prediction", column_target=configs.column_target, allow_func_list=allow_func_list)
+        column_prediction="prediction", column_target=_column_target, allow_func_list=allow_func_list)
     validation_summary = compute(
         root_data_path=_root_data_path, root_prediction_path=configs.output_dir_, eval_data_type="validation",
         columns_corr=_columns_corr, column_group="era", column_example="example_prediction",
-        column_prediction="prediction", column_target=configs.column_target, allow_func_list=allow_func_list)
+        column_prediction="prediction", column_target=_column_target, allow_func_list=allow_func_list)
 
     if not (cross_val_summary.empty or validation_summary.empty):
         diff_summary = (validation_summary - cross_val_summary).dropna().reindex(index=cross_val_summary.index)
