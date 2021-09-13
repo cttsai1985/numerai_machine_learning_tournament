@@ -1,7 +1,8 @@
 import logging
 import numpy as np
 import pandas as pd
-import scipy
+import dask.array as da
+from scipy import stats
 from typing import Optional, List, Tuple, Union
 
 from ds_utils import Utils
@@ -14,7 +15,7 @@ def payout(scores: pd.Series, lower: float = -0.25, upper: float = .25) -> float
     return scores.clip(lower=lower, upper=upper)
 
 
-def sharpe_ratio(data: Union[pd.Series, pd.DataFrame]) -> Union[pd.Series, pd.DataFrame]:
+def sharpe_ratio(data: Union[pd.DataFrame, pd.Series]) -> Union[pd.Series, np.float64]:
     return data.mean() / data.std(ddof=0)
 
 
@@ -24,7 +25,7 @@ def auto_corr_penalty(x: pd.Series, lag: int = 1) -> float:
     return np.sqrt(1 + 2 * np.sum([((n - i) / n) * p ** i for i in range(1, n)]))
 
 
-def smart_sharpe(data: Union[pd.Series, pd.DataFrame]) -> Union[pd.Series, pd.DataFrame]:
+def smart_sharpe(data: pd.DataFrame) -> pd.Series:
     return data.mean() / (data.std(ddof=1) * data.apply(auto_corr_penalty))
 
 
@@ -35,33 +36,42 @@ def smart_sortino_ratio(data: pd.DataFrame, target: float = .02) -> pd.Series:
 
 
 def compute_neutralize(
-        data: pd.DataFrame, target_columns: List[str], neutralizers: List[str], proportion: float, normalize: bool):
-    scores = data[target_columns].values
+        data: pd.DataFrame, target_columns: List[str], neutralizers: List[str], proportion: float,
+        normalize: bool) -> pd.DataFrame:
+    scores = data[target_columns]
     if normalize:
-        scores2 = []
-        for x in scores.T:
-            x = (scipy.stats.rankdata(x, method='ordinal') - .5) / len(x)
-            x = scipy.stats.norm.ppf(x)
-            scores2.append(x)
-        scores = np.array(scores2).T
+        scores = scores.apply(lambda x: stats.norm.ppf(Utils.scale_uniform(x, middle=.5)))
 
-    exposures = data[neutralizers].values
-    scores -= proportion * exposures.dot(np.linalg.pinv(exposures.astype(np.float32)).dot(scores.astype(np.float32)))
-    scores /= scores.std(ddof=0)
-    return pd.DataFrame(scores, columns=target_columns, index=data.index)
+    _scores = scores.values.astype(np.float32)
+    exposures = data[neutralizers].values.astype(np.float32)
+    exposures = pd.DataFrame(
+        exposures.dot(np.linalg.pinv(exposures).dot(_scores)), columns=target_columns, index=data.index)
+
+    scores -= proportion * exposures
+    return scores / scores.std(ddof=0)
 
 
 def feature_neutral_mean(
         data: pd.DataFrame, feature_columns: List[str], proportion: float = 1.0, normalize: bool = True,
-        method: str = "pearson", column_prediction: str = "prediction", column_target: str = "target",) -> pd.Series:
-    data["neutral_sub"] = compute_neutralize(
+        method: str = "pearson", column_prediction: str = "prediction", column_target: str = "target",
+        column_neutral: str = "neutral_score") -> pd.Series:
+    data[column_neutral] = compute_neutralize(
         data, target_columns=[column_prediction], neutralizers=feature_columns, proportion=proportion,
         normalize=normalize)[column_prediction]
-    return Utils.scale_uniform(data["neutral_sub"]).corr(data[column_target], method=method)
+    return Utils.scale_uniform(data[column_neutral]).corr(data[column_target], method=method)
 
 
 def compute_fast_score(
         data: pd.DataFrame, columns: List[str], column_target: str, tb: Optional[int] = None):
+    """
+
+    :param data:
+    :param columns:
+    :param column_target:
+    :param tb:
+    :return:
+    """
+    # TODO: review later
     era_pred = data[columns].values.T.astype(np.float64)
     era_target = data[column_target].values.T.astype(np.float64)
 
@@ -70,15 +80,24 @@ def compute_fast_score(
     else:
         tbidx = np.argsort(era_pred, axis=1)
         tbidx = np.concatenate([tbidx[:, :tb], tbidx[:, -tb:]], axis=1)
-        ccs = [np.corrcoef(era_target[tmpidx], tmppred[tmpidx])[0, 1] for tmpidx, tmppred in zip(tbidx, era_pred)]
-        ccs = np.array(ccs)
-
+        ccs = np.array(
+            [np.corrcoef(era_target[tmpidx], tmppred[tmpidx])[0, 1] for tmpidx, tmppred in zip(tbidx, era_pred)])
     return pd.Series(ccs, index=columns, name=data.name).to_frame().T
 
 
 def fast_score_by_date(
         data: pd.DataFrame, columns: List[str], column_target: str, tb: Optional[int] = None,
         column_group: str = "era"):
+    """
+
+    :param data:
+    :param columns:
+    :param column_target:
+    :param tb:
+    :param column_group:
+    :return:
+    """
+    # TODO: Need to test, This might be slow
     return data.groupby(column_group).apply(
         lambda x: compute_fast_score(x, columns=columns, column_target=column_target, tb=tb))
 

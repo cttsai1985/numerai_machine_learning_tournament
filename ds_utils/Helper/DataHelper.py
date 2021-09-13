@@ -3,13 +3,11 @@ import os
 import json
 import logging
 import numpy as np
-import dask.array as da
-import dask.dataframe as dd
 import pandas as pd
 from pathlib import Path
 from typing import Optional, Callable, Any, Dict, List, Tuple
-from ds_utils.Utils import scale_uniform, pct_ranked, natural_sort
-from ds_utils.DiagnosticUtils import sharpe_ratio
+from ds_utils import Utils
+from ds_utils.DiagnosticUtils import sharpe_ratio, compute_neutralize
 
 
 class DataHelper:
@@ -55,7 +53,7 @@ class DataHelper:
     def load(self, reload: bool = False):
         if not os.path.exists(self.filename):
             logging.warning(f"file {self.filename} does not exist.")
-            raise ValueError(f"file {self.filename} does not exist.")
+            raise FileNotFoundError(f"file {self.filename} does not exist.")
 
         if self.on_disk:
             logging.info(f"run on_disk to save memory")
@@ -95,26 +93,25 @@ class DataHelper:
     def pct_rank_normalize(self, yhat: pd.Series, ) -> pd.Series:
         logging.info(f"rank predictions for regression modeling")
         predictions = pd.concat([yhat, self.groups_for_eval_], axis=1)
-        return predictions.groupby(self.group_name_for_eval_)[yhat.name].apply(lambda x: pct_ranked(x))
+        return predictions.groupby(self.group_name_for_eval_)[yhat.name].apply(lambda x: Utils.pct_ranked(x))
 
-    def feature_neutralize(self, yhat: pd.Series) -> pd.Series:
-        # Normalize submission
-        scale_uniform_yhat = scale_uniform(yhat).values
+    def feature_neutralize(
+            self, yhat: pd.Series, col_yhat: str = "yhat", col_neutral: str = "neutral_yhat",
+            neutralizers: Optional[List[str]] = None, proportion: float = 1., normalize: bool = True) -> pd.Series:
+        if neutralizers is None:
+            neutralizers = self.cols_feature
 
-        # Neutralize submission to features
-        f = self.X_.values
-        neutralized_x = da.asarray(f).dot(da.asarray(np.linalg.pinv(f)).dot(scale_uniform_yhat)).compute()
-
-        neutralized_yhat = scale_uniform_yhat - neutralized_x
-        ret = self.groups_for_eval_.to_frame()
-        ret["yhat"] = neutralized_yhat
-        ret["yhat_std"] = ret.groupby(self.group_name_for_eval_).transform("std")
-        ret["yhat"] /= ret["yhat_std"]
-        return ret.reindex(columns=["yhat"]).squeeze()
+        data = pd.concat([self.X_, yhat.rename(col_yhat), self.groups_for_eval_], axis=1)
+        predictions = yhat.to_frame()
+        predictions[col_neutral] = data.groupby(self.group_name_for_eval_).apply(
+            lambda x: compute_neutralize(
+                x, target_columns=[col_yhat], neutralizers=neutralizers, proportion=proportion,
+                normalize=normalize))
+        return predictions[col_neutral].rename(col_yhat)
 
     def evaluate(
-            self, yhat: pd.Series, scoring_func: Callable, col_yhat: str = "yhat",
-            feature_neutral: bool = False) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+            self, yhat: pd.Series, scoring_func: Callable, col_yhat: str = "yhat", feature_neutral: bool = False,
+            **kwargs) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
 
         scoring_type = None
         if feature_neutral:
@@ -125,7 +122,7 @@ class DataHelper:
         predictions = pd.concat([self.y_, yhat.rename(col_yhat), self.groups_for_eval_], axis=1)
         score_split = predictions.groupby(self.group_name_for_eval_).apply(
             lambda x: scoring_func(x[self.y_.name], x[col_yhat], scoring_type=scoring_type))
-        score_split = score_split.reindex(index=natural_sort(score_split.index.tolist()))
+        score_split = score_split.reindex(index=Utils.natural_sort(score_split.index.tolist()))
 
         # all score
         score_all = scoring_func(
