@@ -21,7 +21,7 @@ def parse_commandline() -> argparse.Namespace:
     default_destination_output: str = "../input/numerai_tournament_resource/old/"
     default_destination_configs: str = "../configs/not_active/"
     default_configs_pattern: str = "../configs/configs_baseline_*.yaml"
-    default_output_pattern: str = "lightgbm_optuna*"
+    default_output_pattern: str = "lgbm*"
     default_output_file: str = "model.pkl"
     parser = argparse.ArgumentParser(
         description="execute a series of scripts", add_help=True,
