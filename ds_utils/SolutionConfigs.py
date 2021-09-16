@@ -13,6 +13,7 @@ from sklearn.model_selection import StratifiedKFold, LeavePGroupsOut, GroupKFold
 from sklearn.metrics import make_scorer
 import lightgbm as lgb
 import xgboost as xgb
+import catboost as catb
 
 from ds_utils.PerformanceTracker import PerformanceTracker
 from ds_utils.CustomSplit import TimeSeriesSplitGroups
@@ -53,6 +54,8 @@ _available_model_gen: Dict[str, Callable] = dict([
     ("XGBRegressor", xgb.XGBRegressor),
     ("XGBMClassifier", xgb.XGBClassifier),
     ("XGBRanker", xgb.XGBRanker),
+    ("CatBoostClassifier", catb.CatBoostClassifier),
+    ("CatBoostRegressor", catb.CatBoostRegressor),
 ])
 
 _available_objective_func: Dict[str, Callable] = dict([
@@ -295,6 +298,7 @@ class EnsembleSolutionConfigs(BaseSolutionConfigs):
     def __init__(
             self, root_resource_path: str, configs_file_path: str = "configs.yaml", eval_data_type: str = None, ):
 
+        self.ensemble_method: str = "mean"
         self.model_name: str = "ensemble_base"
         self.ensemble_model_configs: Optional[List[SolutionConfigs]] = None
         self.model_dirs: Optional[List[str]] = None

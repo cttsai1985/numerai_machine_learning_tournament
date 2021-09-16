@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Optional, Callable, Any, Dict, List, Tuple
 from sklearn.model_selection import cross_val_predict
 from sklearn.model_selection import BaseCrossValidator
+from scipy import stats
 from sklearn.base import BaseEstimator
 
 from .DefaultConfigs import RefreshLevel
@@ -313,7 +314,13 @@ class EnsembleSolution(BaseSolution):
 
         df = pd.concat(predictions, sort=False)
         df = self._check_prediction(df)
-        ret = df.reset_index().groupby([groupby_col] + df.index.names).mean().reset_index(groupby_col)
+
+        ret = df.reset_index().groupby([groupby_col] + df.index.names)
+        if self.ensemble_method == "mean":
+            ret = ret.mean().reset_index(groupby_col)
+        elif self.ensemble_method == "gmean":
+            ret = ret[yhat_name].apply(stats.gmean).reset_index(groupby_col)
+
         logging.info(f"Generated {ret.shape[0]} predictions from {df.shape[0]} samples")
 
         # analytics
@@ -384,10 +391,11 @@ class EnsembleSolution(BaseSolution):
         raise NotImplementedError()
 
     @classmethod
-    def from_configs(cls, args: Namespace, configs: "SolutionConfigs", output_data_path: str, **kwargs):
+    def from_configs(
+            cls, args: Namespace, configs: "SolutionConfigs", output_data_path: str, **kwargs):
         return cls(
-            args.refresh_level, configs.data_manager_, configs.ensemble_method, configs.model_dirs,
-            scoring_func=configs.scoring_func, working_dir=output_data_path, **kwargs)
+            args.refresh_level, configs.data_manager_, ensemble_method=configs.ensemble_method,
+            solution_dirs=configs.model_dirs, scoring_func=configs.scoring_func, working_dir=output_data_path, **kwargs)
 
 
 class NeutralizeSolution(BaseSolution):
