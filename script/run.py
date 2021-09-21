@@ -65,8 +65,9 @@ def compile_offline_diagnostics(
 
 
 def compile_online_diagnostics(
-        script_type: str, script_file: str, config_file: str, model_name: str, command: Optional[List[str]] = None):
-    exec_command = [script_type, script_file, "--configs", config_file, "--model-name", model_name,]
+        script_type: str, script_file: str, config_file: str, model_name: str,
+        command: Optional[List[str]] = None, **kwargs):
+    exec_command = [script_type, script_file, "--configs", config_file, "--model-name", model_name, ]
     if command:
         exec_command += command
     return exec_command
