@@ -98,47 +98,56 @@ class DataHelper:
 
     def feature_neutralize(
             self, yhat: pd.Series, col_yhat: str = "yhat", col_neutral: str = "neutral_yhat",
-            neutralizers: Optional[List[str]] = None, proportion: float = 1., normalize: bool = True) -> pd.Series:
-        if neutralizers is None:
-            neutralizers = self.cols_feature
+            cols_feature: Optional[List[str]] = None, proportion: float = 1., normalize: bool = True) -> pd.Series:
+        if cols_feature is None:
+            cols_feature = self.cols_feature
 
-        data = pd.concat([self.X_, yhat.rename(col_yhat), self.groups_for_eval_], axis=1)
+        groups = self.groups_for_eval_
+        groups_name = groups.name
+
+        data = pd.concat([self.X_, yhat.rename(col_yhat), groups], axis=1)
         predictions = yhat.to_frame()
-        predictions[col_neutral] = data.groupby(self.group_name_for_eval_).apply(
+        predictions[col_neutral] = data.groupby(groups_name).apply(
             lambda x: DiagnosticUtils.compute_neutralize(
-                x, target_columns=[col_yhat], neutralizers=neutralizers, proportion=proportion,
+                x, target_columns=[col_yhat], neutralizers=cols_feature, proportion=proportion,
                 normalize=normalize))
         return predictions[col_neutral].rename(col_yhat)
 
     def evaluate(
-            self, yhat: pd.Series, scoring_func: Callable, col_yhat: str = "yhat", feature_neutral: bool = False,
-            eval_training_target: bool = False, **kwargs) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+            self, yhat: pd.Series, scoring_func: Callable, col_yhat: str = "yhat", eval_training_target: bool = False,
+            scoring_type: Optional[str] = None, **kwargs) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
 
-        group_name = self.group_name_for_eval_
         groups = self.groups_for_eval_
 
         y = self.y_for_eval_
-        y_name = self.y_name_for_eval_
         if eval_training_target:
             y = self.y_
-            y_name = self.y_name_
 
-        scoring_type = None
-        if feature_neutral:
-            logging.info(f"evaluate with neutralizing prediction by feature")
-            yhat = self.feature_neutralize(yhat)
-            scoring_type = "corr"
+        return self._evaluate(
+            y=y, yhat=yhat, groups=groups, col_yhat=col_yhat, scoring_func=scoring_func, scoring_type=scoring_type)
 
-        predictions = pd.concat([y, yhat.rename(col_yhat), groups], axis=1)
-        score_split = predictions.groupby(group_name).apply(
+    @staticmethod
+    def _evaluate(
+            y: pd.Series, yhat: pd.Series, groups: pd.Series, col_yhat: str, scoring_func: Callable,
+            scoring_type: Optional[str] = None, ):
+        y_name = y.name
+        groups_name = groups.name
+
+        predictions: pd.DataFrame = pd.concat([y, yhat.rename(col_yhat), groups], axis=1)
+        score_split: pd.DataFrame = predictions.groupby(groups_name).apply(
             lambda x: scoring_func(x[y_name], x[col_yhat], scoring_type=scoring_type))
         score_split = score_split.reindex(index=Utils.natural_sort(score_split.index.tolist()))
 
         # all score
-        score_all = scoring_func(
-            y, predictions[col_yhat], scoring_type=scoring_type).to_frame(group_name)
-        score_all["sharpe"] = DiagnosticUtils.sharpe_ratio(score_split)
+        score_all: pd.DataFrame = scoring_func(
+            y, predictions[col_yhat], scoring_type=scoring_type).to_frame("evaluationMean")
+        score_all["evaluationSharpeByEra"] = DiagnosticUtils.sharpe_ratio(score_split)
+        score_all["evaluationMeanByEra"] = score_split.mean()
+        score_all["evaluationStdByEra"] = score_split.std()
+        score_all["evaluationSmartSharpeByEra"] = DiagnosticUtils.smart_sharpe(score_split)
+
         score_all = score_all.T
+        score_all.index.name = "metrics"
         logging.info(f"Performance on target: {y_name}:\n{score_all}\n\n{score_split}\n\n{score_split.describe()}")
         return predictions, score_all, score_split
 
@@ -199,7 +208,7 @@ class DataHelper:
 
     @property
     def X_(self) -> pd.DataFrame:
-        return self._read_data(columns=self.cols_feature).astype(np.float16)
+        return self._read_data(columns=self.cols_feature)
 
     @property
     def data_(self) -> Tuple[pd.DataFrame, pd.Series, pd.Series]:

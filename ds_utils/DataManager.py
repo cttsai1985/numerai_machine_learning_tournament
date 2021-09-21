@@ -90,7 +90,7 @@ class DataManager:
 
     def get_example_data_by_type(self, data_type: str = "tournament") -> pd.DataFrame:
         if data_type not in self.example_mapping:
-            return pd.DataFrame
+            return pd.DataFrame()
 
         filepath: str = os.path.join(self.working_dir, self.example_mapping.get(data_type))
         if not(os.path.exists(filepath) and os.path.isfile(filepath)):

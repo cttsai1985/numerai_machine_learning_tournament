@@ -27,7 +27,9 @@ class PerformanceTracker:
                 sample_weight = sample_weight[mask]
 
         data = {"y_true": y_true, "y_pred": y_pred, "sample_weight": sample_weight}
-        return pd.Series({k: v["func"](**data) for k, v in metrics.items()}, name="score")
+        series = pd.Series({k: v["func"](**data) for k, v in metrics.items()}, name="score")
+        series.index.name = "score"
+        return series
 
 
 if "__main__" == __name__:
