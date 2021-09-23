@@ -72,11 +72,11 @@ def compute_payout(filepath: str, columns: Optional[List[str]] = None, ) -> pd.S
     return df_corr.apply(lambda x: DiagnosticUtils.payout(x)).mean().rename("payout")
 
 
-def compute_max_draw_down(filepath: str, columns: Optional[List[str]] = None, window: int = 9000) -> pd.Series:
+def compute_max_draw_down(
+        filepath: str, columns: Optional[List[str]] = None, min_periods: int = 1) -> pd.Series:
     df_corr = _read_dataframe(filepath, columns=columns)
-    rolling_max = (df_corr + 1.).cumprod().rolling(window=window, min_periods=1).max()
-    daily_value = (df_corr + 1.).cumprod()
-    return -((rolling_max - daily_value) / rolling_max).max().rename("max draw down")
+    draw_down = df_corr.apply(lambda x: DiagnosticUtils.max_draw_down(x, min_periods=min_periods))
+    return -(draw_down.max()).rename("max draw down")
 
 
 def compute_fnc(filepath: str, columns: Optional[List[str]] = None, ) -> pd.Series:
@@ -312,7 +312,7 @@ if "__main__" == __name__:
     _root_data_path = os.path.join(root_resource_path, dataset_name)
     _columns_corr: List[str] = ["Spearman", "Pearson"]
 
-    allow_func_list: List[str] = [
+    _allow_func_list: List[str] = [
         "valid_sharpe",
         "valid_corr",
         # "valid_feature_neutral_corr",
@@ -335,11 +335,11 @@ if "__main__" == __name__:
     cross_val_summary = compute(
         root_data_path=_root_data_path, root_prediction_path=configs.output_dir_, eval_data_type="training",
         columns_corr=_columns_corr, column_group="era", column_example="example_prediction",
-        column_prediction="prediction", column_target=_column_target, allow_func_list=allow_func_list)
+        column_prediction="prediction", column_target=_column_target, allow_func_list=_allow_func_list)
     validation_summary = compute(
         root_data_path=_root_data_path, root_prediction_path=configs.output_dir_, eval_data_type="validation",
         columns_corr=_columns_corr, column_group="era", column_example="example_prediction",
-        column_prediction="prediction", column_target=_column_target, allow_func_list=allow_func_list)
+        column_prediction="prediction", column_target=_column_target, allow_func_list=_allow_func_list)
 
     if not (cross_val_summary.empty or validation_summary.empty):
         diff_summary = (validation_summary - cross_val_summary).dropna().reindex(index=cross_val_summary.index)

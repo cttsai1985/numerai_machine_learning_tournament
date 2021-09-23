@@ -10,7 +10,7 @@ from ds_utils import Utils
 
 def payout(scores: pd.Series, lower: float = -0.25, upper: float = .25) -> float:
     """
-    Payout is just the score cliped at +/-25%
+    Payout is just the score clipped at +/-25%
     """
     return scores.clip(lower=lower, upper=upper)
 
@@ -20,19 +20,28 @@ def sharpe_ratio(data: Union[pd.DataFrame, pd.Series]) -> Union[pd.Series, np.fl
 
 
 def auto_corr_penalty(x: pd.Series, lag: int = 1) -> float:
+    if not isinstance(x, pd.Series):
+        raise ValueError(f"object type of data is not pd.Series ({type(x)})")
+
     n = x.shape[0]
     p = np.abs(x.autocorr(lag=lag))
     return np.sqrt(1 + 2 * np.sum([((n - i) / n) * p ** i for i in range(1, n)]))
 
 
 def smart_sharpe(data: pd.DataFrame) -> pd.Series:
+    if not isinstance(data, pd.DataFrame):
+        raise ValueError(f"object type of data is not pd.DataFrame ({type(data)})")
+
     return data.mean() / (data.std(ddof=1) * data.apply(auto_corr_penalty))
 
 
 def smart_sortino_ratio(data: pd.DataFrame, target: float = .02) -> pd.Series:
+    if not isinstance(data, pd.DataFrame):
+        raise ValueError(f"object type of data is not pd.DataFrame ({type(data)})")
+
+    n = data.shape[0]
     xt = data - target
-    return xt.mean() / (
-            ((np.sum(np.minimum(0, xt) ** 2) / (xt.shape[0] - 1)) ** .5) * data.apply(auto_corr_penalty))
+    return xt.mean() / (((np.sum(np.minimum(0, xt) ** 2) / (n - 1)) ** .5) * data.apply(auto_corr_penalty))
 
 
 def compute_neutralize(
@@ -123,5 +132,11 @@ def neutralize_series(series: pd.Series, by: pd.Series, proportion: float = 1.0)
 
 
 def meta_model_control(submit: pd.Series, example: pd.Series, target: pd.Series) -> float:
-    series = neutralize_series(Utils.scale_uniform(submit), example)
+    series = neutralize_series(Utils.scale_uniform(submit), by=example)
     return np.cov(series, target)[0, 1] / (0.29 ** 2)
+
+
+def max_draw_down(data: pd.Series, min_periods: int = 1) -> pd.Series:
+    daily_value: pd.Series = (data + 1.).cumprod()
+    rolling_max: pd.Series = daily_value.expanding(min_periods=min_periods).max()
+    return (rolling_max - daily_value) / rolling_max
