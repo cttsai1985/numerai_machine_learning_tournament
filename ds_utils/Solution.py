@@ -29,10 +29,14 @@ class BaseSolution:
     def __init__(
             self, refresh_level: RefreshLevel, data_manager: "DataManager", scoring_func: Optional[Callable] = None,
             working_dir: Optional[str] = None, **kwargs):
-        self.refresh_level: RefreshLevel = refresh_level
-        self.refresh_level_criterion: RefreshLevel = RefreshLevel("model")
+        # default variable
+        self.default_yhat_name: str = "yhat"
+        self.default_yhat_pct_name: str = "prediction"
 
         self.is_fitted: bool = False
+
+        self.refresh_level_criterion: RefreshLevel = RefreshLevel("model")
+        self.refresh_level: RefreshLevel = refresh_level
 
         self.working_dir: str = working_dir if working_dir else "./"
         Path(self.working_dir).mkdir(parents=True, exist_ok=True)
@@ -199,48 +203,41 @@ class Solution(BaseSolution):
         return self
 
     def _do_inference_for_validation(self, data_type: str) -> pd.Series:
-        yhat_name: str = "yhat"
-        yhat_pct_name: str = "prediction"
-
         valid_data = self.data_manager.get_data_helper_by_type(data_type=data_type)
         X, y, groups = valid_data.data_
-        yhat = pd.Series(self.model.predict(X), index=y.index, name=yhat_name)
+        yhat = pd.Series(self.model.predict(X), index=y.index, name=self.default_yhat_name)
 
         # target for learning
         if valid_data.y_name_ != "target":
-            ret = valid_data.evaluate(yhat=yhat, scoring_func=self.scoring_func, eval_training_target=True)
+            ret = valid_data.evaluate_with_y(yhat=yhat, scoring_func=self.scoring_func, eval_training_target=True)
             ret[1].to_parquet(os.path.join(
                 self.working_dir, _scoreTargetAllFilename.format(eval_type=data_type, target=valid_data.y_name_)))
             ret[2].to_parquet(os.path.join(
                 self.working_dir, _scoreTargetSplitFilename.format(eval_type=data_type, target=valid_data.y_name_)))
 
         # target for eval
-        ret = valid_data.evaluate(yhat=yhat, scoring_func=self.scoring_func)
+        ret = valid_data.evaluate_with_y(yhat=yhat, scoring_func=self.scoring_func)
         ret[1].to_parquet(os.path.join(self.working_dir, _scoreAllFilename.format(eval_type=data_type)))
         ret[2].to_parquet(os.path.join(self.working_dir, _scoreSplitFilename.format(eval_type=data_type)))
 
         valid_predictions = ret[0]
-        valid_predictions[yhat_pct_name] = valid_data.pct_rank_normalize(valid_predictions[yhat_name])
-
+        valid_predictions[self.default_yhat_pct_name] = valid_data.pct_rank_normalize(
+            valid_predictions[self.default_yhat_name])
         valid_predictions.to_parquet(
             os.path.join(self.working_dir, _predictionsParquetFilename.format(eval_type=data_type)))
-        return valid_predictions[yhat_pct_name]
+        return valid_predictions[self.default_yhat_pct_name]
 
     def _do_inference_for_tournament(self, data_type: str) -> pd.Series:
-        yhat_name: str = "yhat"
-        yhat_pct_name: str = "prediction"
-
         infer_data = self.data_manager.get_data_helper_by_type(data_type=data_type)
         X, y, groups = infer_data.data_
 
         predictions = y.to_frame()
-        predictions[yhat_name] = self.model.predict(X)
-        predictions[yhat_pct_name] = infer_data.pct_rank_normalize(predictions[yhat_name])
+        predictions[self.default_yhat_name] = self.model.predict(X)
+        predictions[self.default_yhat_pct_name] = infer_data.pct_rank_normalize(predictions[self.default_yhat_name])
         predictions[infer_data.group_name_for_eval_] = infer_data.groups_for_eval_
-
         predictions.to_parquet(
             os.path.join(self.working_dir, _predictionsParquetFilename.format(eval_type=data_type)))
-        return predictions[yhat_pct_name]
+        return predictions[self.default_yhat_pct_name]
 
     def evaluate(self, train_data_type: str = "training", valid_data_type: str = "validation", ):
         self._do_cross_val(data_type=train_data_type)
@@ -288,9 +285,6 @@ class EnsembleSolution(BaseSolution):
         return df
 
     def _ensemble_predictions(self, eval_type: str, groupby_col: str) -> pd.DataFrame:
-        yhat_name: str = "yhat"
-        yhat_pct_name: str = "prediction"
-
         data_helper = self.data_manager.get_data_helper_by_type(data_type=eval_type)
         logging.info(f"ensemble for {eval_type}")
         predictions = list()
@@ -301,10 +295,11 @@ class EnsembleSolution(BaseSolution):
                 continue
 
             df_prediction = pd.read_parquet(file_path)
-            if yhat_pct_name in df_prediction.columns:
-                df_prediction[yhat_name] = df_prediction[yhat_pct_name]
+            if self.default_yhat_pct_name in df_prediction.columns:
+                df_prediction[self.default_yhat_name] = df_prediction[self.default_yhat_pct_name]
             else:
-                df_prediction[yhat_name] = data_helper.pct_rank_normalize(df_prediction[yhat_name])
+                df_prediction[self.default_yhat_name] = data_helper.pct_rank_normalize(
+                    df_prediction[self.default_yhat_name])
 
             predictions.append(df_prediction)
 
@@ -319,7 +314,7 @@ class EnsembleSolution(BaseSolution):
         if self.ensemble_method == "mean":
             ret = ret.mean().reset_index(groupby_col)
         elif self.ensemble_method == "gmean":
-            ret = ret[yhat_name].apply(stats.gmean).reset_index(groupby_col)
+            ret = ret[self.default_yhat_name].apply(stats.gmean).reset_index(groupby_col)
 
         logging.info(f"Generated {ret.shape[0]} predictions from {df.shape[0]} samples")
 
@@ -327,8 +322,8 @@ class EnsembleSolution(BaseSolution):
         df_corr = df.copy()
         cols = list()
         for i, prediction in enumerate(predictions):
-            col = f"{yhat_name}_{i:03d}"
-            df_corr[col] = self._check_prediction(prediction)[yhat_name]
+            col = f"{self.default_yhat_name}_{i:03d}"
+            df_corr[col] = self._check_prediction(prediction)[self.default_yhat_name]
             cols.append(col)
 
         logging.info(
@@ -336,9 +331,6 @@ class EnsembleSolution(BaseSolution):
         return ret
 
     def _do_inference_for_validation(self, data_type: str) -> pd.Series:
-        yhat_name: str = "yhat"
-        yhat_pct_name: str = "prediction"
-
         valid_data = self.data_manager.get_data_helper_by_type(data_type=data_type)
         y = valid_data.y_
         predictions = self._ensemble_predictions(
@@ -347,21 +339,18 @@ class EnsembleSolution(BaseSolution):
             logging.warning(f"skip inference since the ensemble predictions are empty")
             return self
 
-        ret = valid_data.evaluate(yhat=predictions[yhat_name], scoring_func=self.scoring_func)
+        ret = valid_data.evaluate_with_y(yhat=predictions[self.default_yhat_name], scoring_func=self.scoring_func)
         ret[1].to_parquet(os.path.join(self.working_dir, _scoreAllFilename.format(eval_type=data_type)))
         ret[2].to_parquet(os.path.join(self.working_dir, _scoreSplitFilename.format(eval_type=data_type)))
 
         valid_predictions = ret[0]
-        valid_predictions[yhat_pct_name] = valid_data.pct_rank_normalize(valid_predictions[yhat_name])
-
+        valid_predictions[self.default_yhat_pct_name] = valid_data.pct_rank_normalize(
+            valid_predictions[self.default_yhat_name])
         valid_predictions.to_parquet(
             os.path.join(self.working_dir, _predictionsParquetFilename.format(eval_type=data_type)))
-        return valid_predictions[yhat_pct_name]  # .clip(lower=0. + _EPSILON, upper=1. - _EPSILON)
+        return valid_predictions[self.default_yhat_pct_name]  # .clip(lower=0. + _EPSILON, upper=1. - _EPSILON)
 
     def _do_inference_for_tournament(self, data_type: str) -> pd.Series:
-        yhat_name: str = "yhat"
-        yhat_pct_name: str = "prediction"
-
         infer_data = self.data_manager.get_data_helper_by_type(data_type=data_type)
         y = infer_data.y_
 
@@ -371,10 +360,10 @@ class EnsembleSolution(BaseSolution):
             logging.warning(f"skip inference since the ensemble predictions are empty")
             return self
 
-        predictions[yhat_pct_name] = infer_data.pct_rank_normalize(predictions[yhat_name])
+        predictions[self.default_yhat_pct_name] = infer_data.pct_rank_normalize(predictions[self.default_yhat_name])
         predictions.to_parquet(
             os.path.join(self.working_dir, _predictionsParquetFilename.format(eval_type=data_type)))
-        return predictions[yhat_pct_name]  # .clip(lower=0. + _EPSILON, upper=1. - _EPSILON)
+        return predictions[self.default_yhat_pct_name]  # .clip(lower=0. + _EPSILON, upper=1. - _EPSILON)
 
     def evaluate(self, train_data_type: str = "training", valid_data_type: str = "validation", ):
         self._do_validation(data_type=valid_data_type)
@@ -420,30 +409,24 @@ class NeutralizeSolution(BaseSolution):
         return df
 
     def _do_inference_for_validation(self, data_type: str) -> pd.Series:
-        yhat_name: str = "yhat"
-        yhat_pct_name: str = "prediction"
-
         valid_data = self.data_manager.get_data_helper_by_type(data_type=data_type)
         predictions = pd.DataFrame()  # TODO: Neutralize
         if predictions.empty:
             logging.warning(f"skip inference since the ensemble predictions are empty")
             return self
 
-        ret = valid_data.evaluate(yhat=predictions[yhat_name], scoring_func=self.scoring_func)
+        ret = valid_data.evaluate_with_y(yhat=predictions[self.default_yhat_name], scoring_func=self.scoring_func)
         ret[1].to_parquet(os.path.join(self.working_dir, _scoreAllFilename.format(eval_type=data_type)))
         ret[2].to_parquet(os.path.join(self.working_dir, _scoreSplitFilename.format(eval_type=data_type)))
 
         valid_predictions = ret[0]
-        valid_predictions[yhat_pct_name] = valid_data.pct_rank_normalize(valid_predictions[yhat_name])
-
+        valid_predictions[self.default_yhat_pct_name] = valid_data.pct_rank_normalize(
+            valid_predictions[self.default_yhat_name])
         valid_predictions.to_parquet(
             os.path.join(self.working_dir, _predictionsParquetFilename.format(eval_type=data_type)))
-        return valid_predictions[yhat_pct_name]
+        return valid_predictions[self.default_yhat_pct_name]
 
     def _do_inference_for_tournament(self, data_type: str) -> pd.Series:
-        yhat_name: str = "yhat"
-        yhat_pct_name: str = "prediction"
-
         logging.info(f"inference on {data_type}")
         infer_data = self.data_manager.get_data_helper_by_type(data_type=data_type)
         X, y, groups = infer_data.data_
@@ -454,10 +437,10 @@ class NeutralizeSolution(BaseSolution):
             logging.warning(f"skip inference since the ensemble predictions are empty")
             return self
 
-        predictions[yhat_pct_name] = infer_data.pct_rank_normalize(predictions[yhat_name])
+        predictions[self.default_yhat_pct_name] = infer_data.pct_rank_normalize(predictions[self.default_yhat_name])
         predictions.to_parquet(
             os.path.join(self.working_dir, _predictionsParquetFilename.format(eval_type=data_type)))
-        return predictions[yhat_pct_name]
+        return predictions[self.default_yhat_pct_name]
 
     def evaluate(self, train_data_type: str = "training", valid_data_type: str = "validation", ):
         self._do_validation(data_type=valid_data_type)
