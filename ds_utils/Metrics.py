@@ -8,7 +8,7 @@ from scipy.stats import spearmanr, pearsonr
 from ds_utils import Utils
 
 
-def corr(y_true: Union[np.array, pd.Series], y_pred: pd.Series, func: Callable, **kwargs) -> float:
+def _base_corr(y_true: Union[np.array, pd.Series], y_pred: pd.Series, func: Callable, **kwargs) -> float:
     if func == pearsonr:
         y_pred = Utils.scale_uniform(y_pred)
 
@@ -16,19 +16,19 @@ def corr(y_true: Union[np.array, pd.Series], y_pred: pd.Series, func: Callable, 
 
 
 def spearman_corr(y: np.ndarray, y_preds: np.ndarray, **kwargs) -> float:
-    return corr(y, pd.Series(y_preds), func=spearmanr, **kwargs)
+    return _base_corr(y, pd.Series(y_preds), func=spearmanr, **kwargs)
 
 
 def pearson_corr(y: np.ndarray, y_preds: np.ndarray, **kwargs) -> float:
-    return corr(y, pd.Series(y_preds), func=pearsonr, **kwargs)
+    return _base_corr(y, pd.Series(y_preds), func=pearsonr, **kwargs)
 
 
 def median_absolute_error_fixed(y_true: np.array, y_pred: np.array, **kwargs) -> float:
     return metrics.median_absolute_error(y_true, y_pred)
 
 
-metric_spearman_corr = partial(corr, func=spearmanr)
-metric_pearson_corr = partial(corr, func=pearsonr)
+metric_spearman_corr = partial(_base_corr, func=spearmanr)
+metric_pearson_corr = partial(_base_corr, func=pearsonr)
 
 available_metrics: Dict[str, Dict[str, Union[str, Callable]]] = {
     "RMSE": {"type": "error", "func": partial(metrics.mean_squared_error, squared=False)},
