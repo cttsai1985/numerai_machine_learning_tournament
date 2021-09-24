@@ -4,21 +4,13 @@ import json
 import logging
 import pandas as pd
 from pathlib import Path
-from typing import Optional, Callable, Any, Dict, List, Tuple
+from typing import Optional, Callable, Any, Dict, List, Tuple, Union
 
-from .Helper import DataHelper
+from ds_utils.Helper import DataHelper, EvaluationDataHelper
+from ds_utils import FilenameTemplate
 
-_DATA_PAIRS: List[Tuple[str]] = [
-    ("training", "numerai_training_data.parquet",),
-    ("validation", "numerai_validation_data.parquet",),
-    ("tournament", "numerai_tournament_data.parquet",),
-    ("live", "numerai_live_data.parquet",),
-]
-
-_EXAMPLE_PAIRS: List[Tuple[str]] = [
-    ("validation", "example_validation_predictions.parquet"),
-    ("tournament", "example_predictions.parquet"),
-]
+_DATA_PAIRS: List[Tuple[str]] = FilenameTemplate.numerai_data_filename_pairs
+_EXAMPLE_PAIRS: List[Tuple[str]] = FilenameTemplate.numerai_example_filename_pairs
 
 
 class DataManager:
@@ -93,19 +85,25 @@ class DataManager:
             return pd.DataFrame()
 
         filepath: str = os.path.join(self.working_dir, self.example_mapping.get(data_type))
-        if not(os.path.exists(filepath) and os.path.isfile(filepath)):
+        if not (os.path.exists(filepath) and os.path.isfile(filepath)):
             return pd.DataFrame()
 
         return pd.read_parquet(filepath)
 
     def get_data_helper_by_type(
-            self, data_type: str = "training", preload: bool = True) -> Tuple[pd.DataFrame, pd.Series, pd.Series]:
+            self, data_type: str = "training", preload: bool = True,
+            for_evaluation: bool = False) -> Union[DataHelper, EvaluationDataHelper]:
         if data_type not in self.data_mapping.keys():
             raise ValueError(f"{data_type} not in data mapping")
 
-        obj = DataHelper.from_params(
-            filename=os.path.join(self.working_dir, self.data_mapping.get(data_type)), dataset_type=data_type,
-            cols_feature=self.cols_feature, col_target=self.col_target, cols_group=self.cols_group)
+        if for_evaluation:  # TODO: default data_mapping
+            obj = EvaluationDataHelper.from_params(
+                filename=os.path.join(self.working_dir, self.data_mapping.get(data_type)), dataset_type=data_type,
+                cols_feature=self.cols_feature, col_target="target", cols_group=["era"])
+        else:
+            obj = EvaluationDataHelper.from_params(
+                filename=os.path.join(self.working_dir, self.data_mapping.get(data_type)), dataset_type=data_type,
+                cols_feature=self.cols_feature, col_target=self.col_target, cols_group=self.cols_group)
 
         if not preload:
             return obj

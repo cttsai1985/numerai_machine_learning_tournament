@@ -37,6 +37,7 @@ class BaseSolution:
         self.data_manager: "DataManager" = data_manager
 
         self.scoring_func: Callable = scoring_func
+        self.feature_scoring_func: Optional[Callable] = None
 
     def _cast_for_classifier(self, target: pd.Series, cast_type: str):
         if self.data_manager.has_cast_mapping(cast_type):
@@ -124,6 +125,59 @@ class BaseSolution:
         self._do_inference(data_type=infer_data_type)
         return self
 
+    def _do_evaluation_on_learning_target(self, yhat: pd.Series, data_type: str = "validation") -> pd.Series:
+        valid_data = self.data_manager.get_data_helper_by_type(data_type=data_type, for_evaluation=False)
+        results = valid_data.evaluate_with_y(yhat=yhat, scoring_func=self.scoring_func)
+
+        score_all = results[1]
+        score_all.to_parquet(
+            os.path.join(self.working_dir, ft.score_target_all_filename_template.format(
+                eval_type=data_type, target=valid_data.y_name_)))
+
+        score_split = results[2]
+        score_split.to_parquet(
+            os.path.join(self.working_dir, ft.score_target_split_filename_template.format(
+                eval_type=data_type, target=valid_data.y_name_)))
+
+        predictions = results[0]
+        return predictions
+
+    def _do_evaluation_on_tournament_target(self, yhat: pd.Series, data_type: str = "validation") -> pd.Series:
+        valid_data = self.data_manager.get_data_helper_by_type(data_type=data_type, for_evaluation=True)
+
+        # feature exposure
+        feature_evaluation = valid_data.evaluate_with_feature(yhat)
+        feature_evaluation.to_parquet(
+            os.path.join(self.working_dir, ft.feature_exposure_filename_template.format(eval_type=data_type)))
+
+        # prediction results
+        results = valid_data.evaluate_with_y(yhat=yhat, scoring_func=self.scoring_func)
+
+        score_all = results[1]
+        score_all.to_parquet(
+            os.path.join(self.working_dir, ft.score_target_all_filename_template.format(
+                eval_type=data_type, target=valid_data.y_name_)))
+
+        score_split = results[2]
+        score_split.to_parquet(
+            os.path.join(self.working_dir, ft.score_target_split_filename_template.format(
+                eval_type=data_type, target=valid_data.y_name_)))
+
+        predictions = results[0]
+        predictions[self.default_yhat_pct_name] = valid_data.pct_rank_normalize(predictions[self.default_yhat_name])
+        predictions.to_parquet(
+            os.path.join(self.working_dir, ft.predictions_parquet_filename_template.format(eval_type=data_type)))
+        return predictions
+
+    def _post_process_inference(self, yhat: pd.Series, data_type: str = "tournament") -> pd.Series:
+        infer_data = self.data_manager.get_data_helper_by_type(data_type=data_type, for_evaluation=True)
+        predictions = yhat.to_frame()
+        predictions[self.default_yhat_pct_name] = infer_data.pct_rank_normalize(predictions[yhat.name])
+        predictions[infer_data.group_name_] = infer_data.groups_
+        predictions.to_parquet(
+            os.path.join(self.working_dir, ft.predictions_parquet_filename_template.format(eval_type=data_type)))
+        return predictions
+
     @classmethod
     def from_configs(cls, args: Namespace, configs: "SolutionConfigs", output_data_path: str, **kwargs):
         raise NotImplementedError()
@@ -197,48 +251,24 @@ class Solution(BaseSolution):
         return self
 
     def _do_inference_for_validation(self, data_type: str) -> pd.Series:
-        valid_data = self.data_manager.get_data_helper_by_type(data_type=data_type)
+        valid_data = self.data_manager.get_data_helper_by_type(data_type=data_type, for_evaluation=False)
         X, y, groups = valid_data.data_
         yhat = pd.Series(self.model.predict(X), index=y.index, name=self.default_yhat_name)
 
-        results = valid_data.evaluate_with_feature(yhat)
-        results.to_parquet(
-            os.path.join(self.working_dir, ft.feature_exposure_filename_template.format(eval_type=data_type)))
-
         # target for learning
         if valid_data.y_name_ != "target":
-            results = valid_data.evaluate_with_y(yhat=yhat, scoring_func=self.scoring_func, eval_training_target=True)
-            results[1].to_parquet(
-                os.path.join(self.working_dir, ft.score_target_all_filename_template.format(
-                    eval_type=data_type, target=valid_data.y_name_)))
-            results[2].to_parquet(
-                os.path.join(self.working_dir, ft.score_target_split_filename_template.format(
-                    eval_type=data_type, target=valid_data.y_name_)))
+            _ = self._do_evaluation_on_learning_target(yhat=yhat, data_type=data_type)
 
-        # target for eval
-        results = valid_data.evaluate_with_y(yhat=yhat, scoring_func=self.scoring_func)
-        results[1].to_parquet(
-            os.path.join(self.working_dir, ft.score_all_filename_template.format(eval_type=data_type)))
-        results[2].to_parquet(
-            os.path.join(self.working_dir, ft.score_split_filename_template.format(eval_type=data_type)))
-
-        valid_predictions = results[0]
-        valid_predictions[self.default_yhat_pct_name] = valid_data.pct_rank_normalize(
-            valid_predictions[self.default_yhat_name])
-        valid_predictions.to_parquet(
-            os.path.join(self.working_dir, ft.predictions_parquet_filename_template.format(eval_type=data_type)))
+        valid_predictions = self._do_evaluation_on_tournament_target(yhat=yhat, data_type=data_type)
         return valid_predictions[self.default_yhat_pct_name]
 
     def _do_inference_for_tournament(self, data_type: str) -> pd.Series:
-        infer_data = self.data_manager.get_data_helper_by_type(data_type=data_type)
+        infer_data = self.data_manager.get_data_helper_by_type(data_type=data_type, for_evaluation=False)
         X, y, groups = infer_data.data_
 
         predictions = y.to_frame()
         predictions[self.default_yhat_name] = self.model.predict(X)
-        predictions[self.default_yhat_pct_name] = infer_data.pct_rank_normalize(predictions[self.default_yhat_name])
-        predictions[infer_data.group_name_for_eval_] = infer_data.groups_for_eval_
-        predictions.to_parquet(
-            os.path.join(self.working_dir, ft.predictions_parquet_filename_template.format(eval_type=data_type)))
+        predictions = self._post_process_inference(yhat=predictions, data_type=data_type)
         return predictions[self.default_yhat_pct_name]
 
     def evaluate(self, train_data_type: str = "training", valid_data_type: str = "validation", ):
@@ -333,41 +363,30 @@ class EnsembleSolution(BaseSolution):
         return ret
 
     def _do_inference_for_validation(self, data_type: str) -> pd.Series:
-        valid_data = self.data_manager.get_data_helper_by_type(data_type=data_type)
+        valid_data = self.data_manager.get_data_helper_by_type(data_type=data_type, for_evaluation=False)
         y = valid_data.y_
         predictions = self._ensemble_predictions(
-            data_type, groupby_col=valid_data.group_name_for_eval_).reindex(index=y.index)
+            data_type, groupby_col=valid_data.group_name_).reindex(index=y.index)
         if predictions.empty:
             logging.warning(f"skip inference since the ensemble predictions are empty")
             return self
 
-        results = valid_data.evaluate_with_y(yhat=predictions[self.default_yhat_name], scoring_func=self.scoring_func)
-        results[1].to_parquet(
-            os.path.join(self.working_dir, ft.score_all_filename_template.format(eval_type=data_type)))
-        results[2].to_parquet(
-            os.path.join(self.working_dir, ft.score_split_filename_template.format(eval_type=data_type)))
-
-        valid_predictions = results[0]
-        valid_predictions[self.default_yhat_pct_name] = valid_data.pct_rank_normalize(
-            valid_predictions[self.default_yhat_name])
-        valid_predictions.to_parquet(
-            os.path.join(self.working_dir, ft.predictions_parquet_filename_template.format(eval_type=data_type)))
-        return valid_predictions[self.default_yhat_pct_name]  # .clip(lower=0. + _EPSILON, upper=1. - _EPSILON)
+        valid_predictions = self._do_evaluation_on_tournament_target(
+            yhat=predictions[self.default_yhat_name], data_type=data_type)
+        return valid_predictions[self.default_yhat_pct_name]
 
     def _do_inference_for_tournament(self, data_type: str) -> pd.Series:
-        infer_data = self.data_manager.get_data_helper_by_type(data_type=data_type)
+        infer_data = self.data_manager.get_data_helper_by_type(data_type=data_type, for_evaluation=False)
         y = infer_data.y_
 
         predictions = self._ensemble_predictions(
-            data_type, groupby_col=infer_data.group_name_for_eval_).reindex(index=y.index)
+            data_type, groupby_col=infer_data.group_name_).reindex(index=y.index)
         if predictions.empty:
             logging.warning(f"skip inference since the ensemble predictions are empty")
             return self
 
-        predictions[self.default_yhat_pct_name] = infer_data.pct_rank_normalize(predictions[self.default_yhat_name])
-        predictions.to_parquet(
-            os.path.join(self.working_dir, ft.predictions_parquet_filename_template.format(eval_type=data_type)))
-        return predictions[self.default_yhat_pct_name]  # .clip(lower=0. + _EPSILON, upper=1. - _EPSILON)
+        predictions = self._post_process_inference(yhat=predictions[self.default_yhat_pct_name], data_type=data_type)
+        return predictions[self.default_yhat_pct_name]
 
     def evaluate(self, train_data_type: str = "training", valid_data_type: str = "validation", ):
         self._do_validation(data_type=valid_data_type)
@@ -413,39 +432,28 @@ class NeutralizeSolution(BaseSolution):
         return df
 
     def _do_inference_for_validation(self, data_type: str) -> pd.Series:
-        valid_data = self.data_manager.get_data_helper_by_type(data_type=data_type)
+        valid_data = self.data_manager.get_data_helper_by_type(data_type=data_type, for_evaluation=False)
         predictions = pd.DataFrame()  # TODO: Neutralize
         if predictions.empty:
             logging.warning(f"skip inference since the ensemble predictions are empty")
             return self
 
-        results = valid_data.evaluate_with_y(yhat=predictions[self.default_yhat_name], scoring_func=self.scoring_func)
-        results[1].to_parquet(
-            os.path.join(self.working_dir, ft.score_all_filename_template.format(eval_type=data_type)))
-        results[2].to_parquet(
-            os.path.join(self.working_dir, ft.score_split_filename_template.format(eval_type=data_type)))
-
-        valid_predictions = results[0]
-        valid_predictions[self.default_yhat_pct_name] = valid_data.pct_rank_normalize(
-            valid_predictions[self.default_yhat_name])
-        valid_predictions.to_parquet(
-            os.path.join(self.working_dir, ft.predictions_parquet_filename_template.format(eval_type=data_type)))
+        valid_predictions = self._do_evaluation_on_tournament_target(
+            yhat=predictions[self.default_yhat_name], data_type=data_type)
         return valid_predictions[self.default_yhat_pct_name]
 
     def _do_inference_for_tournament(self, data_type: str) -> pd.Series:
         logging.info(f"inference on {data_type}")
-        infer_data = self.data_manager.get_data_helper_by_type(data_type=data_type)
+        infer_data = self.data_manager.get_data_helper_by_type(data_type=data_type, for_evaluation=True)
         X, y, groups = infer_data.data_
 
         predictions = self._ensemble_predictions(
-            data_type, groupby_col=infer_data.group_name_for_eval_).reindex(index=y.index).reset_index()
+            data_type, groupby_col=infer_data.group_name_).reindex(index=y.index).reset_index()
         if predictions.empty:
             logging.warning(f"skip inference since the ensemble predictions are empty")
             return self
 
-        predictions[self.default_yhat_pct_name] = infer_data.pct_rank_normalize(predictions[self.default_yhat_name])
-        predictions.to_parquet(
-            os.path.join(self.working_dir, ft.predictions_parquet_filename_template.format(eval_type=data_type)))
+        predictions = self._post_process_inference(yhat=predictions[self.default_yhat_name], data_type=data_type)
         return predictions[self.default_yhat_pct_name]
 
     def evaluate(self, train_data_type: str = "training", valid_data_type: str = "validation", ):
