@@ -14,4 +14,6 @@ compute:
     script_file: ./ensemble.py
     script_type: python
 preprocess: null
-closure: null
+closure:
+  - script_file: ./offline_model_overview.py
+    script_type: python
