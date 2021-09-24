@@ -17,6 +17,7 @@ import ds_utils
 from ds_utils import SolutionConfigs
 from ds_utils import Utils
 from ds_utils import DiagnosticUtils
+from ds_utils import FilenameTemplate as ft
 
 
 def _read_dataframe(
@@ -215,16 +216,19 @@ def compute(
     result_type = {"training": "cross_val", "validation": "validation"}.get(eval_data_type)
 
     # produced files
-    score_split_file_path: str = os.path.join(root_prediction_path, f"{result_type}_score_split.parquet")
-    prediction_file_path: str = os.path.join(root_prediction_path, f"{result_type}_predictions.parquet")
-    feature_neutral_corr_file_path: str = os.path.join(root_prediction_path, f"{result_type}_fnc_split.parquet")
+    score_split_file_path: str = os.path.join(
+        root_prediction_path, ft.score_split_filename_template.format(eval_type=result_type))
+    prediction_file_path: str = os.path.join(
+        root_prediction_path, ft.predictions_parquet_filename_template.format(eval_type=result_type))
+    feature_neutral_corr_file_path: str = os.path.join(
+        root_prediction_path, f"{result_type}_fnc_split.parquet")
 
     # tournament files
     feature_columns_file_path = os.path.join(configs.meta_data_dir, "features_numerai.json")
-    example_file_path: str = os.path.join(root_data_path, "example_validation_predictions.parquet")
-    feature_file_path: str = os.path.join(root_data_path, f"numerai_{eval_data_type}_data.parquet")
-    output_file_path: str = os.path.join(
-        root_prediction_path, "_".join([f"{result_type}", "model", "diagnostics.{filename_extension}"]))
+    example_file_path: str = os.path.join(root_data_path, ft.example_validation_predictions_parquet_filename)
+    feature_file_path: str = os.path.join(
+        root_data_path, ft.numerai_data_filename_template.format(eval_type=eval_data_type))
+    output_file_path: str = os.path.join(root_prediction_path, ft.model_diagnostics_filename_template)
 
     file_paths: List[str] = [
         score_split_file_path, prediction_file_path,
@@ -294,8 +298,8 @@ def compute(
     summary = pd.concat(list(filter(lambda x: ~x.empty, ret_collect)), axis=1).T.round(4)
     summary.index.name = "attr"
     logging.info(f"stats on {eval_data_type}:\n{summary}")
-    summary.to_csv(output_file_path.format(filename_extension="csv"), )
-    summary.to_parquet(output_file_path.format(filename_extension="parquet"), )
+    summary.to_csv(output_file_path.format(eval_type=result_type, filename_extension="csv"), )
+    summary.to_parquet(output_file_path.format(eval_type=result_type, filename_extension="parquet"), )
     # TODO: add select era
     return summary
 

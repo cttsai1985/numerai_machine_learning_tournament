@@ -10,3 +10,4 @@ from .SolutionConfigs import SolutionConfigs, EnsembleSolutionConfigs
 from .Tuner import OptunaLGBMTuner
 from . import Metrics
 from . import DiagnosticUtils
+from . import FilenameTemplate

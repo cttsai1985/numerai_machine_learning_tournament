@@ -3,7 +3,7 @@ import numpy as np
 import pandas as pd
 import dask.array as da
 from scipy import stats
-from typing import Optional, List, Tuple, Union
+from typing import Optional, List, Tuple, Union, Callable
 
 from ds_utils import Utils
 
@@ -19,12 +19,12 @@ def sharpe_ratio(data: Union[pd.DataFrame, pd.Series]) -> Union[pd.Series, np.fl
     return data.mean() / data.std(ddof=0)
 
 
-def auto_corr_penalty(x: pd.Series, lag: int = 1) -> float:
-    if not isinstance(x, pd.Series):
-        raise ValueError(f"object type of data is not pd.Series ({type(x)})")
+def auto_corr_penalty(data: pd.Series, lag: int = 1) -> float:
+    if not isinstance(data, pd.Series):
+        raise ValueError(f"object type of data is not pd.Series ({type(data)})")
 
-    n = x.shape[0]
-    p = np.abs(x.autocorr(lag=lag))
+    n = data.shape[0]
+    p = np.abs(data.autocorr(lag=lag))
     return np.sqrt(1 + 2 * np.sum([((n - i) / n) * p ** i for i in range(1, n)]))
 
 
@@ -137,6 +137,18 @@ def meta_model_control(submit: pd.Series, example: pd.Series, target: pd.Series)
 
 
 def max_draw_down(data: pd.Series, min_periods: int = 1) -> pd.Series:
+    if not isinstance(data, pd.Series):
+        raise ValueError(f"object type of data is not pd.Series ({type(data)})")
+
     daily_value: pd.Series = (data + 1.).cumprod()
     rolling_max: pd.Series = daily_value.expanding(min_periods=min_periods).max()
     return (rolling_max - daily_value) / rolling_max
+
+
+def feature_exposure(
+        data: pd.DataFrame, columns_feature: List[str], column_target: str = "prediction",
+        method: Union[str, Callable] = "pearson", ) -> pd.Series:
+    if not isinstance(data, pd.DataFrame):
+        raise ValueError(f"object type of data is not pd.DataFrame ({type(data)})")
+
+    return data[columns_feature].corrwith(other=data[column_target], method=method)
