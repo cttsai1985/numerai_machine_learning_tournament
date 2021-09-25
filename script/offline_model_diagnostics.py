@@ -43,52 +43,11 @@ def _target_dataframe(
     return df_target.join(example["prediction"].rename("example_prediction"), how="left")
 
 
-def compute_sharpe(filepath: str, columns: Optional[List[str]] = None, ) -> pd.Series:
-    df_corr = _read_dataframe(filepath, columns=columns)
-    return DiagnosticUtils.sharpe_ratio(df_corr).rename("corr sharpe")
-
-
-def compute_smart_sharpe(filepath: str, columns: Optional[List[str]] = None, ) -> pd.Series:
-    df_corr = _read_dataframe(filepath, columns=columns)
-    return DiagnosticUtils.smart_sharpe(df_corr).rename("corr smart sharpe")
-
-
-def compute_smart_sortino_ratio(filepath: str, columns: Optional[List[str]] = None, target: float = .02) -> pd.Series:
-    df_corr = _read_dataframe(filepath, columns=columns)
-    return DiagnosticUtils.smart_sortino_ratio(df_corr, target=target).rename("corr smart sortino ratio")
-
-
-def compute_corr_mean(filepath: str, columns: Optional[List[str]] = None, ) -> pd.Series:
-    df_corr = _read_dataframe(filepath, columns=columns)
-    return df_corr.mean().rename("corr mean")
-
-
-def compute_corr_std(filepath: str, columns: Optional[List[str]] = None, ) -> pd.Series:
-    df_corr = _read_dataframe(filepath, columns=columns)
-    return df_corr.std(ddof=0).rename("corr std")
-
-
-def compute_payout(filepath: str, columns: Optional[List[str]] = None, ) -> pd.Series:
-    df_corr = _read_dataframe(filepath, columns=columns)
-    return df_corr.apply(lambda x: DiagnosticUtils.payout(x)).mean().rename("payout")
-
-
-def compute_max_draw_down(
-        filepath: str, columns: Optional[List[str]] = None, min_periods: int = 1) -> pd.Series:
-    df_corr = _read_dataframe(filepath, columns=columns)
-    draw_down = df_corr.apply(lambda x: DiagnosticUtils.max_draw_down(x, min_periods=min_periods))
-    return -(draw_down.max()).rename("max draw down")
-
-
-def compute_fnc(filepath: str, columns: Optional[List[str]] = None, ) -> pd.Series:
-    df_corr = _read_dataframe(filepath, columns=columns)
-    return df_corr.mean().rename("feature neutralized corr mean")
-
-
 def compute_feature_neutral_mean(
         prediction_filepath: str, feature_filepath: str, feature_columns_filepath: str,
         columns: Optional[List[str]] = None, column_group: str = "era", column_prediction: str = "prediction",
         column_target: str = "target", proportion: float = 1., normalize: bool = True) -> pd.Series:
+    # TODO: remove this later
     df = _read_dataframe(feature_filepath)
     df_target = _read_dataframe(prediction_filepath)
     df[column_prediction] = df_target[column_prediction]
@@ -108,90 +67,105 @@ def compute_feature_neutral_mean(
     return pd.DataFrame(results).mean().rename("feature neutralized corr mean")
 
 
-def _compute_meta_model_control(
-        df: pd.DataFrame, column_group: str = "era", column_example: str = "example_prediction",
-        column_prediction: str = "prediction", column_target: str = "target") -> pd.Series:
-    df.dropna(inplace=True)
-    return df.groupby(column_group).apply(
-        lambda x: DiagnosticUtils.meta_model_control(
-            submit=x[column_prediction], example=x[column_example], target=x[column_target])).rename(
-        "meta_model_control")
+def compute_sharpe(filepath: str, columns: Optional[List[str]] = None, ) -> pd.Series:
+    df_corr = _read_dataframe(filepath, columns=columns)
+    return DiagnosticUtils.sharpe_ratio(df_corr).rename("corrSharpe")
 
 
-def compute_mmc_mean(
-        prediction_filepath: str, example_filepath: str, columns: Optional[List[str]] = None,
-        column_group: str = "era", column_example: str = "example_prediction", column_prediction: str = "prediction",
-        column_target: str = "target") -> pd.Series:
-    df_target = _target_dataframe(prediction_filepath, example_filepath)
-    mmc = _compute_meta_model_control(
-        df=df_target, column_group=column_group, column_example=column_example, column_prediction=column_prediction,
-        column_target=column_target)
-    return pd.Series([mmc.mean()] * len(columns), index=columns, name="mmc mean")
+def compute_smart_sharpe(filepath: str, columns: Optional[List[str]] = None, ) -> pd.Series:
+    df_corr = _read_dataframe(filepath, columns=columns)
+    return DiagnosticUtils.smart_sharpe(df_corr).rename("corrSmartSharpe")
 
 
-def compute_corr_with_example(
-        prediction_filepath: str, example_filepath: str, columns: Optional[List[str]] = None, column_group: str = "era",
-        column_example: str = "example_prediction", column_prediction: str = "prediction") -> pd.Series:
-    df_target = _target_dataframe(prediction_filepath, example_filepath)
+def compute_smart_sortino_ratio(filepath: str, columns: Optional[List[str]] = None, target: float = .02) -> pd.Series:
+    df_corr = _read_dataframe(filepath, columns=columns)
+    return DiagnosticUtils.smart_sortino_ratio(df_corr, target=target).rename("corrSmartSortinoRatio")
 
-    groupby_df = df_target.groupby(column_group)
-    results = dict()
-    for method in columns:
-        results[method] = groupby_df.apply(
-            lambda x: Utils.scale_uniform(x[column_example]).corr(
-                other=Utils.scale_uniform(x[column_prediction]), method=method.lower()))
-    return pd.DataFrame(results).mean().rename("corr with example predictions")
+
+def compute_corr_mean(filepath: str, columns: Optional[List[str]] = None, ) -> pd.Series:
+    df_corr = _read_dataframe(filepath, columns=columns)
+    return df_corr.mean().rename("corrMean")
+
+
+def compute_corr_std(filepath: str, columns: Optional[List[str]] = None, ) -> pd.Series:
+    df_corr = _read_dataframe(filepath, columns=columns)
+    return df_corr.std(ddof=0).rename("corrStd")
+
+
+def compute_payout(filepath: str, columns: Optional[List[str]] = None, ) -> pd.Series:
+    df_corr = _read_dataframe(filepath, columns=columns)
+    return df_corr.apply(lambda x: DiagnosticUtils.payout(x)).mean().rename("payout")
+
+
+def compute_max_draw_down(
+        filepath: str, columns: Optional[List[str]] = None, min_periods: int = 1) -> pd.Series:
+    df_corr = _read_dataframe(filepath, columns=columns)
+    draw_down = df_corr.apply(lambda x: DiagnosticUtils.max_draw_down(x, min_periods=min_periods))
+    return -(draw_down.max()).rename("maxDrawDown")
+
+
+def compute_mmc_mean(example_filepath: str, columns: Optional[List[str]] = None, ) -> pd.Series:
+    df_mmc = _read_dataframe(example_filepath, columns=["metaModelControl"])
+    df_mmc = df_mmc.mean().rename("mmcMean")
+    df_mmc.index = columns
+    return df_mmc
+
+
+def compute_mmc_std(example_filepath: str, columns: Optional[List[str]] = None, ) -> pd.Series:
+    df_mmc = _read_dataframe(example_filepath, columns=["metaModelControl"])
+    df_mmc = df_mmc.mean().rename("mmcStd")
+    df_mmc.index = columns
+    return df_mmc
+
+
+def compute_corr_with_example(example_filepath: str, columns: Optional[List[str]] = None, ) -> pd.Series:
+    df_example_preds_corr = _read_dataframe(example_filepath, columns=["examplePredsCorr"])
+    example_preds_corr = df_example_preds_corr.mean().rename("examplePredsCorr")
+    example_preds_corr.index = columns
+    return example_preds_corr
 
 
 def compute_corr_plus_mmc(
-        corr_filepath: str, prediction_filepath: str, example_filepath: str, columns: Optional[List[str]] = None,
-        column_group: str = "era", column_example: str = "example_prediction", column_prediction: str = "prediction",
-        column_target: str = "target", ) -> pd.Series:
-    df_target = _target_dataframe(prediction_filepath, example_filepath)
-    df_mmc = _compute_meta_model_control(
-        df=df_target, column_group=column_group, column_example=column_example, column_prediction=column_prediction,
-        column_target=column_target)
+        corr_filepath: str, example_filepath: str, columns: Optional[List[str]] = None, ) -> pd.Series:
     df_corr = _read_dataframe(corr_filepath, columns=columns)
-    for col in df_corr.columns:
-        df_corr[col] = df_corr[col] + df_mmc
-    return (df_corr.mean() / df_corr.std()).rename("corr + mmc sharpe")
+    df_mmc = _read_dataframe(example_filepath, columns=["metaModelControl"])
+
+    df_corr = df_corr.squeeze() + df_mmc.squeeze()
+    return df_corr.rename("corrPlusMmc")
+
+
+def compute_corr_plus_mmc_mean(
+        corr_filepath: str, example_filepath: str, columns: Optional[List[str]] = None, ) -> pd.Series:
+    df_corr = compute_corr_plus_mmc(
+        corr_filepath=corr_filepath, example_filepath=example_filepath, columns=columns)
+    return pd.Series(df_corr.mean(), index=columns, name="corrPlusMmcMean")
+
+
+def compute_corr_plus_mmc_std(
+        corr_filepath: str, example_filepath: str, columns: Optional[List[str]] = None, ) -> pd.Series:
+    df_corr = compute_corr_plus_mmc(
+        corr_filepath=corr_filepath, example_filepath=example_filepath, columns=columns)
+    return pd.Series(df_corr.std(), index=columns, name="corrPlusMmcStd")
+
+
+def compute_corr_plus_mmc_sharpe(
+        corr_filepath: str, example_filepath: str, columns: Optional[List[str]] = None, ) -> pd.Series:
+    df_corr = compute_corr_plus_mmc(
+        corr_filepath=corr_filepath, example_filepath=example_filepath, columns=columns)
+    return pd.Series(DiagnosticUtils.sharpe_ratio(df_corr), index=columns, name="corrPlusMmcSharpe")
 
 
 def compute_corr_plus_mmc_sharpe_diff(
-        corr_filepath: str, prediction_filepath: str, example_filepath: str, columns: Optional[List[str]] = None,
-        column_group: str = "era", column_example: str = "example_prediction", column_prediction: str = "prediction",
-        column_target: str = "target", ) -> pd.Series:
-    corr_plus_mmc_sharpe = compute_corr_plus_mmc(
-        corr_filepath=corr_filepath, prediction_filepath=prediction_filepath, example_filepath=example_filepath,
-        columns=columns, column_group=column_group, column_example=column_example, column_prediction=column_prediction,
-        column_target=column_target)
+        corr_filepath: str, example_filepath: str, columns: Optional[List[str]] = None, ) -> pd.Series:
+    corr_plus_mmc_sharpe = compute_corr_plus_mmc_sharpe(
+        corr_filepath=corr_filepath, example_filepath=example_filepath, columns=columns)
     valid_sharpe = compute_sharpe(filepath=corr_filepath, columns=columns)
-    return (corr_plus_mmc_sharpe - valid_sharpe).rename("corr + mmc sharpe diff")
+    return (corr_plus_mmc_sharpe - valid_sharpe).rename("corrPlusMmcSharpeDiff")
 
 
-def max_feature_exposure(
-        data: pd.DataFrame, method: str, columns_feature: List[str],
-        column_prediction: str = "prediction", ) -> pd.Series:
-    return data[columns_feature].corrwith(other=data[column_prediction], method=method).abs().max()
-
-
-def compute_max_feature_exposure(
-        prediction_filepath: str, feature_filepath: str, feature_columns_filepath: str,
-        columns: Optional[List[str]] = None, column_group: str = "era",
-        column_prediction: str = "prediction") -> pd.Series:
-    df = _read_dataframe(feature_filepath)
-    df_target = _read_dataframe(prediction_filepath)
-    df[column_prediction] = df_target[column_prediction]
-    with open(feature_columns_filepath, "r") as fp:
-        columns_feature = json.load(fp)
-
-    groupby_df = df.groupby(column_group)
-    results = dict()
-    for method in columns:
-        results[method] = groupby_df.apply(
-            lambda d: max_feature_exposure(
-                d, method=method.lower(), columns_feature=columns_feature, column_prediction=column_prediction))
-    return pd.DataFrame(results).mean().rename("max feature exposure")
+def compute_max_feature_exposure(feature_exposure_filepath: str, columns: Optional[List[str]] = None, ) -> pd.Series:
+    data = _read_dataframe(feature_exposure_filepath)
+    return pd.Series(data.abs().max().mean(), index=columns, name="maxFeatureExposure")
 
 
 def parse_commandline() -> argparse.Namespace:
@@ -218,22 +192,15 @@ def compute(
     # produced files
     score_split_file_path: str = os.path.join(
         root_prediction_path, ft.score_split_filename_template.format(eval_type=result_type))
-    prediction_file_path: str = os.path.join(
-        root_prediction_path, ft.predictions_parquet_filename_template.format(eval_type=result_type))
-    feature_neutral_corr_file_path: str = os.path.join(
-        root_prediction_path, f"{result_type}_fnc_split.parquet")
+    feature_exposure_file_path: str = os.path.join(
+        root_prediction_path, ft.feature_exposure_filename_template.format(eval_type=result_type))
+    example_analytics_file_path: str = os.path.join(
+        root_prediction_path, ft.example_analytics_filename_template.format(eval_type=result_type))
 
-    # tournament files
-    feature_columns_file_path = os.path.join(configs.meta_data_dir, "features_numerai.json")
-    example_file_path: str = os.path.join(root_data_path, ft.example_validation_predictions_parquet_filename)
-    feature_file_path: str = os.path.join(
-        root_data_path, ft.numerai_data_filename_template.format(eval_type=eval_data_type))
     output_file_path: str = os.path.join(root_prediction_path, ft.model_diagnostics_filename_template)
 
     file_paths: List[str] = [
-        score_split_file_path, prediction_file_path,
-        # feature_neutral_corr_file_path
-        feature_columns_file_path, example_file_path, feature_file_path
+        score_split_file_path, feature_exposure_file_path, example_analytics_file_path,
     ]
     file_status: List[bool] = list(map(lambda x: os.path.exists(x), file_paths))
     if not all(file_status):
@@ -246,41 +213,29 @@ def compute(
 
     # configure computing tasks
     func_list: List[Tuple[str, Callable, Dict[str, Any]]] = [
-        ("valid_sharpe", compute_sharpe, dict(filepath=score_split_file_path, columns=columns_corr)),
-        ("valid_corr", compute_corr_mean, dict(filepath=score_split_file_path, columns=columns_corr)),
-        ("valid_feature_neutral_corr", compute_feature_neutral_mean,
-         dict(prediction_filepath=prediction_file_path, feature_filepath=feature_file_path,
-              feature_columns_filepath=feature_columns_file_path, columns=columns_corr, column_group=column_group,
-              column_prediction=column_prediction, column_target=column_target, proportion=1., normalize=True)),
-        ("valid_fnc", compute_fnc, dict(filepath=feature_neutral_corr_file_path, target_columns=columns_corr)),
-        ("valid_smart_sharpe", compute_smart_sharpe, dict(filepath=score_split_file_path, columns=columns_corr)),
-        ("valid_smart_sortino_ratio", compute_smart_sortino_ratio,
+        ("validSharpe", compute_sharpe, dict(filepath=score_split_file_path, columns=columns_corr)),
+        ("validCorr", compute_corr_mean, dict(filepath=score_split_file_path, columns=columns_corr)),
+        ("validSmartSharpe", compute_smart_sharpe, dict(filepath=score_split_file_path, columns=columns_corr)),
+        ("validSmartSortinoRatio", compute_smart_sortino_ratio,
          dict(filepath=score_split_file_path, columns=columns_corr)),
-        ("valid_payout", compute_payout, dict(filepath=score_split_file_path, columns=columns_corr)),
-        ("valid_std", compute_corr_std, dict(filepath=score_split_file_path, columns=columns_corr)),
-        ("max_feature_exposure", compute_max_feature_exposure,
-         dict(prediction_filepath=prediction_file_path, feature_filepath=feature_file_path,
-              feature_columns_filepath=feature_columns_file_path, columns=columns_corr, column_group=column_group,
-              column_prediction=column_prediction, )),
-        ("max_draw_down", compute_max_draw_down, dict(filepath=score_split_file_path, columns=columns_corr)),
-    ]
+        ("validPayout", compute_payout, dict(filepath=score_split_file_path, columns=columns_corr)),
+        ("validStd", compute_corr_std, dict(filepath=score_split_file_path, columns=columns_corr)),
+        ("maxFeatureExposure", compute_max_feature_exposure, dict(
+            feature_exposure_filepath=feature_exposure_file_path, columns=columns_corr)),
+        ("maxDrawDown", compute_max_draw_down, dict(filepath=score_split_file_path, columns=columns_corr)), ]
 
     func_list_with_mmc: List[Tuple[str, Callable, Dict[str, Any]]] = [
-        ("corr_plus_mmc_sharpe", compute_corr_plus_mmc, dict(
-            corr_filepath=score_split_file_path, prediction_filepath=prediction_file_path,
-            example_filepath=example_file_path, columns=columns_corr, column_group=column_group,
-            column_example=column_example, column_prediction=column_prediction, column_target=column_target)),
-        ("mmc_mean", compute_mmc_mean, dict(
-            prediction_filepath=prediction_file_path, example_filepath=example_file_path, columns=columns_corr,
-            column_group=column_group, column_example=column_example, column_prediction=column_prediction,
-            column_target=column_target)),
-        ("corr_plus_mmc_sharpe_diff", compute_corr_plus_mmc_sharpe_diff, dict(
-            corr_filepath=score_split_file_path, prediction_filepath=prediction_file_path,
-            example_filepath=example_file_path, columns=columns_corr, column_group=column_group,
-            column_example=column_example, column_prediction=column_prediction, column_target=column_target)),
-        ("corr_with_example", compute_corr_with_example, dict(
-            prediction_filepath=prediction_file_path, example_filepath=example_file_path, columns=columns_corr,
-            column_group=column_group, column_example=column_example, column_prediction=column_prediction, )),
+        ("corrPlusMmcSharpe", compute_corr_plus_mmc_sharpe, dict(
+            corr_filepath=score_split_file_path, example_filepath=example_analytics_file_path, columns=columns_corr, )),
+        ("validMmcMean", compute_mmc_mean, dict(example_filepath=example_analytics_file_path, columns=columns_corr, )),
+        ("validCorrPlusMmcSharpeDiff", compute_corr_plus_mmc_sharpe_diff, dict(
+            corr_filepath=score_split_file_path, example_filepath=example_analytics_file_path, columns=columns_corr, )),
+        ("validCorrPlusMmcMean", compute_corr_plus_mmc_mean, dict(
+            corr_filepath=score_split_file_path, example_filepath=example_analytics_file_path, columns=columns_corr, )),
+        ("validCorrPlusMmcStd", compute_corr_plus_mmc_std, dict(
+            corr_filepath=score_split_file_path, example_filepath=example_analytics_file_path, columns=columns_corr, )),
+        ("examplePredsCorr", compute_corr_with_example, dict(
+            example_filepath=example_analytics_file_path, columns=columns_corr, )),
     ]
 
     if eval_data_type == "validation":
@@ -293,11 +248,13 @@ def compute(
         name, func, params = i
         logging.info(f"compute {name}")
         locals()[name] = func(**params)
+        #
         ret_collect.append(locals()[name])
 
-    summary = pd.concat(list(filter(lambda x: ~x.empty, ret_collect)), axis=1).T.round(4)
+    summary = pd.concat(list(filter(lambda x: ~x.empty, ret_collect)), axis=1).T
     summary.index.name = "attr"
-    logging.info(f"stats on {eval_data_type}:\n{summary}")
+    summary.columns = ["score"]
+    logging.info(f"stats on {eval_data_type}:\n{summary.round(4)}")
     summary.to_csv(output_file_path.format(eval_type=result_type, filename_extension="csv"), )
     summary.to_parquet(output_file_path.format(eval_type=result_type, filename_extension="parquet"), )
     # TODO: add select era
@@ -314,23 +271,28 @@ if "__main__" == __name__:
     configs = SolutionConfigs(root_resource_path=root_resource_path, configs_file_path=_args.configs)
 
     _root_data_path = os.path.join(root_resource_path, dataset_name)
-    _columns_corr: List[str] = ["Spearman", "Pearson"]
+    _columns_corr: List[str] = ["Pearson"]  # ["Spearman", "Pearson"]
 
     _allow_func_list: List[str] = [
-        "valid_sharpe",
-        "valid_corr",
-        # "valid_feature_neutral_corr",
-        # "valid_fnc",
-        "valid_smart_sharpe",
-        "valid_smart_sortino_ratio",
-        "valid_payout",
-        "valid_std",
-        # "max_feature_exposure",
-        "max_draw_down",
-        "corr_plus_mmc_sharpe",
-        "mmc_mean",
-        "corr_plus_mmc_sharpe_diff",
-        "corr_with_example"
+        # profit
+        "validSharpe",
+        "validCorr",
+        "validSmartSharpe",
+        "validSmartSortinoRatio",
+
+        # risk
+        "validPayout",
+        "validStd",
+        "maxFeatureExposure",
+        "maxDrawDown",
+
+        # meta model control
+        "corrPlusMmcSharpe",
+        "validMmcMean",
+        "validCorrPlusMmcSharpeDiff",
+        "examplePredsCorr",
+        "validCorrPlusMmcMean",
+        "validCorrPlusMmcStd",
     ]
 
     _column_target = configs.column_target

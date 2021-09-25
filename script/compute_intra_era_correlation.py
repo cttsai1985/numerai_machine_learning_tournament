@@ -65,7 +65,7 @@ def compute(data_filepath: str, columns: List[str], groupby_col: str = "era", me
 
     logging.info(f"compute {mask.sum()} rows for {method}")
     df = dd.from_pandas(df.loc[mask], chunksize=50000)
-    df = df.groupby(groupby_col).apply(lambda x: x.corr(method=method)).compute(n_workers=n_jobs, processes=False)
+    df = df.groupby(groupby_col).apply(lambda x: x._base_corr(method=method)).compute(n_workers=n_jobs, processes=False)
     df = df.unstack()
     df.index = normalize_era(df.index.tolist())
     df.columns = df.columns.tolist()
