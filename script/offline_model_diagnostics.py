@@ -165,7 +165,7 @@ def compute_corr_plus_mmc_sharpe_diff(
 
 def compute_max_feature_exposure(feature_exposure_filepath: str, columns: Optional[List[str]] = None, ) -> pd.Series:
     data = _read_dataframe(feature_exposure_filepath)
-    return pd.Series(data.abs().max().mean(), index=columns, name="maxFeatureExposure")
+    return pd.Series(data.abs().max(axis=1).mean(), index=columns, name="maxFeatureExposure")
 
 
 def parse_commandline() -> argparse.Namespace:
