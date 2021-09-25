@@ -352,47 +352,39 @@ class EnsembleSolution(BaseSolution):
     def _ensemble_predictions(self, eval_type: str, groupby_col: str) -> pd.DataFrame:
         data_helper = self.data_manager.get_data_helper_by_type(data_type=eval_type)
         logging.info(f"ensemble for {eval_type}")
-        predictions = list()
-        for solution_dir in self.solution_dirs:
-            file_path = os.path.join(solution_dir, f"{eval_type}_predictions.parquet")
+
+        cols_prediction = list()
+        df = pd.DataFrame()
+        for i, solution_dir in enumerate(self.solution_dirs):
+            file_path = os.path.join(solution_dir, ft.predictions_parquet_filename_template.format(eval_type=eval_type))
             if not (os.path.exists(file_path) and os.path.isfile(file_path)):
                 logging.info(f"prediction file does not exist: {file_path}")
                 continue
 
-            df_prediction = pd.read_parquet(file_path)
-            if self.default_yhat_pct_name in df_prediction.columns:
-                df_prediction[self.default_yhat_name] = df_prediction[self.default_yhat_pct_name]
+            col = f"{self.default_yhat_name}_{i:03d}"
+            df_prediction = pd.read_parquet(file_path, columns=[groupby_col, self.default_yhat_pct_name])
+            if df.empty:
+                df = df_prediction
+                df.rename(columns={self.default_yhat_pct_name: col}, inplace=True)
             else:
-                df_prediction[self.default_yhat_name] = data_helper.pct_rank_normalize(
-                    df_prediction[self.default_yhat_name])
+                df[col] = self._check_prediction(df_prediction)[self.default_yhat_pct_name]
 
-            predictions.append(df_prediction)
+            cols_prediction.append(col)
+            logging.warning(f"Adding {col} into ensemble from {file_path}")
 
-        if not predictions:
+        if df.empty:
             logging.warning(f"no predictions to form ensemble predictions.")
             return pd.DataFrame()
 
-        df = pd.concat(predictions, sort=False)
-        df = self._check_prediction(df)
-
-        ret = df.reset_index().groupby([groupby_col] + df.index.names)
+        ret = df[[groupby_col]]
         if self.ensemble_method == "mean":
-            ret = ret.mean().reset_index(groupby_col)
+            ret[self.default_yhat_name] = df[cols_prediction].apply(lambda x: x.mean(), axis=1)
         elif self.ensemble_method == "gmean":
-            ret = ret[self.default_yhat_name].apply(stats.gmean).reset_index(groupby_col)
+            ret[self.default_yhat_name] = df[cols_prediction].apply(lambda x: stats.gmean(x), axis=1)
 
         logging.info(f"Generated {ret.shape[0]} predictions from {df.shape[0]} samples")
 
-        # analytics
-        df_corr = df.copy()
-        cols = list()
-        for i, prediction in enumerate(predictions):
-            col = f"{self.default_yhat_name}_{i:03d}"
-            df_corr[col] = self._check_prediction(prediction)[self.default_yhat_name]
-            cols.append(col)
-
-        logging.info(
-            f"correlation intra predictions:\n{df_corr.groupby(groupby_col)[cols].corr(method='spearman')}")
+        logging.info(f"correlation intra predictions:\n{df.groupby(groupby_col).corr(method='spearman')}")
         return ret
 
     def _do_inference_for_validation(self, data_type: str) -> pd.Series:
@@ -420,7 +412,7 @@ class EnsembleSolution(BaseSolution):
             logging.warning(f"skip inference since the ensemble predictions are empty")
             return self
 
-        predictions = self._post_process_inference(yhat=predictions[self.default_yhat_pct_name], data_type=data_type)
+        predictions = self._post_process_inference(yhat=predictions[self.default_yhat_name], data_type=data_type)
         return predictions[self.default_yhat_pct_name]
 
     def evaluate(self, train_data_type: str = "training", valid_data_type: str = "validation", ):
