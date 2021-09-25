@@ -196,18 +196,17 @@ class EvaluationDataHelper(DataHelper):
         y_name = y.name
 
         if not method:
-            method = Metrics.pearson_corr
+            method = "pearson"  # Metrics.pearson_corr
 
         predictions: pd.DataFrame = pd.concat(
-            [y, Utils.scale_uniform(yhat).rename(col_yhat), Utils.scale_uniform(example_yhat).rename(column_example),
-             groups], axis=1)
+            [y, yhat.rename(col_yhat), example_yhat.rename(column_example), groups], axis=1)
         predictions.dropna(inplace=True)
         gpdf_predictions = predictions.groupby(groups_name)
         example_corr = gpdf_predictions.apply(
             lambda x: x[column_example].corr(other=x[col_yhat], method=method)).rename("examplePredsCorr")
         meta_model_control = gpdf_predictions.apply(
             lambda x: DiagnosticUtils.meta_model_control(
-                submit=x[y_name], example=x[column_example], target=x[col_yhat])).rename("metaModelControl")
+                submit=x[col_yhat], example=x[column_example], target=x[y_name])).rename("metaModelControl")
 
         # results.columns.name = ""
         results = pd.concat([example_corr, meta_model_control], axis=1, sort=False)
