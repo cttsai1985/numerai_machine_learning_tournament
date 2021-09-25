@@ -17,22 +17,23 @@ import ds_utils
 from numerai_utils import NumerAPIHelper
 
 _MetricsFuncMapping = {
-    "corr sharpe": "nlargest",
-    "corr mean": "nlargest",
-    # "feature neutralized corr mean": "nlargest",
+    "corrSharpe": "nlargest",
+    "corrMean": "nlargest",
+    "corrSmartSharpe": "nlargest",
+    "corrSmartSortinoRatio": "nlargest",
     "payout": "nlargest",
 
-    "corr std": "nsmallest",
-    # "max feature exposure": "nsmallest",
-    "max draw down": "nlargest",
+    "corrStd": "nsmallest",
+    "maxFeatureExposure": "nsmallest",
+    "maxDrawDown": "nlargest",
 
-    "corr + mmc sharpe": "nlargest",
-    "mmc mean": "nlargest",
-    "corr + mmc sharpe diff": "nsmallest",  # due to minus value
-    "corr with example predictions": "nsmallest",
+    "corrPlusMmcSharpe": "nlargest",
+    "mmcMean": "nlargest",
+    "corrPlusMmcSharpeDiff": "nlargest",  # due to minus value
+    "examplePredsCorr": "nsmallest",
 
-    "corr smart sharpe": "nlargest",
-    "corr smart sortino ratio": "nlargest",
+    "corrSmartSharpe": "nlargest",
+    "corrSmartSortinoRatio": "nlargest",
 }
 
 
@@ -110,23 +111,25 @@ if "__main__" == __name__:
 
     df = df.loc[df[col_metric].isin(_MetricsFuncMapping.keys())]
     df[_column_path] = df[_column_path].apply(lambda x: Path(x).parts[-2])
+    _metrics_names = df[col_metric].unique()
+    _metric_func_mapping = {k: v for k, v in _MetricsFuncMapping.items() if k in _metrics_names}
     ret = df.set_index([_column_path, ]).groupby(
-        col_metric).apply(lambda x: compute(x[_args.corr_type], _MetricsFuncMapping.get(x.name), num=_args.num_rows))
+        col_metric).apply(lambda x: compute(x[_args.corr_type], _metric_func_mapping.get(x.name), num=_args.num_rows))
     ret = ret.reset_index(_column_path)
-    ret[_column_objective] = list(map(lambda x: _MetricsFuncMapping.get(x), ret.index.tolist()))
+    ret[_column_objective] = list(map(lambda x: _metric_func_mapping.get(x), ret.index.tolist()))
     ret = ret.groupby(col_metric).apply(
         lambda x: x.reset_index()).reindex(columns=[_column_objective, _args.corr_type, _column_path])
-    ret = ret.loc[list(_MetricsFuncMapping.keys())]
+    ret = ret.loc[list(_metric_func_mapping.keys())]
 
     # multiple sub
     _allow_list: List[str] = list()
     _metric_selections: List[Tuple[str, float]] = [
-        ("corr sharpe", _args.min_corr_sharpe),
-        ("corr std", _args.max_corr_std),
-        ("max draw down", _args.max_draw_down),
-        ("mmc mean", _args.min_mmc),
-        ("corr + mmc sharpe", _args.max_corr_mmc_sharpe),
-        ("corr with example predictions", _args.corr_cut_off)
+        ("corrSharpe", _args.min_corr_sharpe),
+        ("corrStd", _args.max_corr_std),
+        ("maxDrawDown", _args.max_draw_down),
+        ("mmcMean", _args.min_mmc),
+        ("corrPlusMmcSharpeDiff", _args.max_corr_mmc_sharpe),
+        ("examplePredsCorr", _args.corr_cut_off)
     ]
 
     if _args.use_filter:
@@ -136,7 +139,7 @@ if "__main__" == __name__:
         logging.info(f"rows: {len(_allow_list)}, after filtered: {len(_all_allow_list)}")
         ret = ret.loc[ret[_column_path].isin(_all_allow_list)]
 
-    helper = NumerAPIHelper(root_dir_path=root_resource_path,)
+    helper = NumerAPIHelper(root_dir_path=root_resource_path, )
     Path(helper.result_dir_current_round_).mkdir(parents=True, exist_ok=True)
     logging.info(f"best models:\n{ret}")
     ret.to_csv(os.path.join(helper.result_dir_current_round_, "summary.csv"), index=True)
