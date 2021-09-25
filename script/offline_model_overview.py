@@ -64,7 +64,7 @@ def parse_commandline() -> argparse.Namespace:
     parser.add_argument(
         "--max-corr-mmc-sharpe", type=float, default=0., help="max corr std cut off")
     parser.add_argument(
-        "--min-corr-sharpe", type=float, default=0., help="min sharpe ratio cut off")
+        "--min-corr-sharpe", type=float, default=.5, help="min sharpe ratio cut off")
     parser.add_argument("--use-filter", action="store_true", help="use filter to select output")
     args = parser.parse_args()
     return args
@@ -99,6 +99,7 @@ if "__main__" == __name__:
     ds_utils.configure_pandas_display()
 
     _column_objective: str = "objective"
+    _col_score: str = "score"
     _column_path: str = "path"
     col_metric: str = "attr"
     root_resource_path: str = "../input/numerai_tournament_resource/"
@@ -114,11 +115,11 @@ if "__main__" == __name__:
     _metrics_names = df[col_metric].unique()
     _metric_func_mapping = {k: v for k, v in _MetricsFuncMapping.items() if k in _metrics_names}
     ret = df.set_index([_column_path, ]).groupby(
-        col_metric).apply(lambda x: compute(x[_args.corr_type], _metric_func_mapping.get(x.name), num=_args.num_rows))
+        col_metric).apply(lambda x: compute(x[_col_score], _metric_func_mapping.get(x.name), num=_args.num_rows))
     ret = ret.reset_index(_column_path)
     ret[_column_objective] = list(map(lambda x: _metric_func_mapping.get(x), ret.index.tolist()))
     ret = ret.groupby(col_metric).apply(
-        lambda x: x.reset_index()).reindex(columns=[_column_objective, _args.corr_type, _column_path])
+        lambda x: x.reset_index()).reindex(columns=[_column_objective, _col_score, _column_path])
     ret = ret.loc[list(_metric_func_mapping.keys())]
 
     # multiple sub
@@ -134,7 +135,7 @@ if "__main__" == __name__:
 
     if _args.use_filter:
         _all_allow_list = filter_model_by_performance(
-            data=ret, metric_selections=_metric_selections, column_score=_args.corr_type, column=_column_path)
+            data=ret, metric_selections=_metric_selections, column_score=_col_score, column=_column_path)
 
         logging.info(f"rows: {len(_allow_list)}, after filtered: {len(_all_allow_list)}")
         ret = ret.loc[ret[_column_path].isin(_all_allow_list)]
