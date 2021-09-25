@@ -77,7 +77,7 @@ class BaseSolution:
         raise NotImplementedError()
 
     def _do_validation(self, data_type: Optional[str] = None):
-        logging.info(f"inference on {data_type}")
+        logging.info(f"validation on {data_type}")
         if data_type == "skip":
             return self
 
@@ -126,6 +126,7 @@ class BaseSolution:
         return self
 
     def _do_evaluation_on_learning_target(self, yhat: pd.Series, data_type: str = "validation") -> pd.Series:
+        logging.info(f"evaluation on learning target: data_type={data_type}")
         valid_data = self.data_manager.get_data_helper_by_type(data_type=data_type, for_evaluation=False)
         results = valid_data.evaluate_with_y(yhat=yhat, scoring_func=self.scoring_func)
 
@@ -143,6 +144,7 @@ class BaseSolution:
         return predictions
 
     def _do_evaluation_on_tournament_target(self, yhat: pd.Series, data_type: str = "validation") -> pd.Series:
+        logging.info(f"evaluation on tournament target: data_type={data_type}")
         valid_data = self.data_manager.get_data_helper_by_type(data_type=data_type, for_evaluation=True)
 
         # feature exposure
@@ -169,11 +171,38 @@ class BaseSolution:
             os.path.join(self.working_dir, ft.predictions_parquet_filename_template.format(eval_type=data_type)))
         return predictions
 
+    def _do_evaluation_on_tournament_example(self, yhat: pd.Series, data_type: str = "validation") -> pd.DataFrame:
+        logging.info(f"evaluation on tournament example: data_type={data_type}")
+        valid_data = self.data_manager.get_data_helper_by_type(data_type=data_type, for_evaluation=True)
+
+        # corr with y example
+        example_predictions = self.data_manager.get_example_data_by_type(data_type=data_type).squeeze()
+        if not example_predictions.empty:
+            example_analytics = valid_data.evaluate_with_y_and_example(yhat=yhat, example_yhat=example_predictions)
+            example_analytics.to_parquet(
+                os.path.join(self.working_dir, ft.example_analytics_filename_template.format(eval_type=data_type)))
+            return example_analytics
+
+        return pd.DataFrame()
+
+    def _do_evaluation_on_feature_neutralize(self, yhat: pd.Series, data_type: str = "validation") -> pd.Series:
+        logging.info(f"evaluation on feature neutralize: data_type={data_type}")
+        valid_data = self.data_manager.get_data_helper_by_type(data_type=data_type, for_evaluation=True)
+
+        # feature exposure
+        feature_neutralize = valid_data.evaluate_with_feature_neutralize(
+            yhat, cols_feature=None, proportion=1., normalize=True)
+        feature_neutralize.to_frame("featureNeutralCorr").to_parquet(
+            os.path.join(self.working_dir, ft.example_corr_filename_template.format(eval_type=data_type)))
+
+        return feature_neutralize
+
     def _post_process_inference(self, yhat: pd.Series, data_type: str = "tournament") -> pd.Series:
         infer_data = self.data_manager.get_data_helper_by_type(data_type=data_type, for_evaluation=True)
         predictions = yhat.to_frame()
         predictions[self.default_yhat_pct_name] = infer_data.pct_rank_normalize(predictions[yhat.name])
         predictions[infer_data.group_name_] = infer_data.groups_
+
         predictions.to_parquet(
             os.path.join(self.working_dir, ft.predictions_parquet_filename_template.format(eval_type=data_type)))
         return predictions
@@ -251,6 +280,7 @@ class Solution(BaseSolution):
         return self
 
     def _do_inference_for_validation(self, data_type: str) -> pd.Series:
+        logging.info(f"inference for validation: {data_type}")
         valid_data = self.data_manager.get_data_helper_by_type(data_type=data_type, for_evaluation=False)
         X, y, groups = valid_data.data_
         yhat = pd.Series(self.model.predict(X), index=y.index, name=self.default_yhat_name)
@@ -259,16 +289,19 @@ class Solution(BaseSolution):
         if valid_data.y_name_ != "target":
             _ = self._do_evaluation_on_learning_target(yhat=yhat, data_type=data_type)
 
+        # _ = self._do_evaluation_on_feature_neutralize(yhat=yhat, data_type=data_type)
+        _ = self._do_evaluation_on_tournament_example(yhat=yhat, data_type=data_type)
         valid_predictions = self._do_evaluation_on_tournament_target(yhat=yhat, data_type=data_type)
         return valid_predictions[self.default_yhat_pct_name]
 
     def _do_inference_for_tournament(self, data_type: str) -> pd.Series:
+        logging.info(f"inference for tournament: {data_type}")
         infer_data = self.data_manager.get_data_helper_by_type(data_type=data_type, for_evaluation=False)
         X, y, groups = infer_data.data_
 
         predictions = y.to_frame()
         predictions[self.default_yhat_name] = self.model.predict(X)
-        predictions = self._post_process_inference(yhat=predictions, data_type=data_type)
+        predictions = self._post_process_inference(yhat=predictions[self.default_yhat_name], data_type=data_type)
         return predictions[self.default_yhat_pct_name]
 
     def evaluate(self, train_data_type: str = "training", valid_data_type: str = "validation", ):
@@ -365,14 +398,16 @@ class EnsembleSolution(BaseSolution):
     def _do_inference_for_validation(self, data_type: str) -> pd.Series:
         valid_data = self.data_manager.get_data_helper_by_type(data_type=data_type, for_evaluation=False)
         y = valid_data.y_
-        predictions = self._ensemble_predictions(
-            data_type, groupby_col=valid_data.group_name_).reindex(index=y.index)
+
+        predictions = self._ensemble_predictions(data_type, groupby_col=valid_data.group_name_).reindex(index=y.index)
         if predictions.empty:
             logging.warning(f"skip inference since the ensemble predictions are empty")
             return self
 
-        valid_predictions = self._do_evaluation_on_tournament_target(
-            yhat=predictions[self.default_yhat_name], data_type=data_type)
+        yhat = predictions[self.default_yhat_name]
+        # _ = self._do_evaluation_on_feature_neutralize(yhat=yhat, data_type=data_type)
+        _ = self._do_evaluation_on_tournament_example(yhat=yhat, data_type=data_type)
+        valid_predictions = self._do_evaluation_on_tournament_target(yhat=yhat, data_type=data_type)
         return valid_predictions[self.default_yhat_pct_name]
 
     def _do_inference_for_tournament(self, data_type: str) -> pd.Series:

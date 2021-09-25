@@ -2,7 +2,7 @@ from typing import List, Tuple
 
 # feature evaluation
 feature_exposure_filename_template: str = "{eval_type}_feature_exposure.parquet"
-meta_model_control_filename_template: str = "{eval_type}_meta_model_control.parquet"
+example_analytics_filename_template: str = "{eval_type}_example_analytics.parquet"
 
 # score file
 score_split_filename_template: str = "{eval_type}_score_split.parquet"

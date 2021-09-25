@@ -41,6 +41,7 @@ class DataManager:
     @classmethod
     def from_configs(cls, configs: "SolutionConfigs", **kwargs):
         # TODO: implemented and refactor other dependency
+        # configs.load_feature_columns_from_json()
         return cls(
             working_dir=configs.input_data_dir, data_mapping=configs.data_mapping, col_target=configs.column_target,
             cols_group=configs.columns_group, cols_feature=configs.columns_feature,
@@ -96,14 +97,17 @@ class DataManager:
         if data_type not in self.data_mapping.keys():
             raise ValueError(f"{data_type} not in data mapping")
 
-        if for_evaluation:  # TODO: default data_mapping
-            obj = EvaluationDataHelper.from_params(
-                filename=os.path.join(self.working_dir, self.data_mapping.get(data_type)), dataset_type=data_type,
-                cols_feature=self.cols_feature, col_target="target", cols_group=["era"])
-        else:
-            obj = EvaluationDataHelper.from_params(
-                filename=os.path.join(self.working_dir, self.data_mapping.get(data_type)), dataset_type=data_type,
-                cols_feature=self.cols_feature, col_target=self.col_target, cols_group=self.cols_group)
+        filename = os.path.join(self.working_dir, self.data_mapping.get(data_type))
+        cols_feature = self.cols_feature
+        col_target = self.col_target
+        cols_group = self.cols_group
+        if for_evaluation:  # TODO: default cols_feature
+            col_target = "target"
+            cols_group = ["era"]
+
+        obj = EvaluationDataHelper.from_params(
+            filename=filename, dataset_type=data_type, cols_feature=cols_feature, col_target=col_target,
+            cols_group=cols_group)
 
         if not preload:
             return obj

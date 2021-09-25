@@ -99,7 +99,8 @@ class BaseSolutionConfigs:
         self.index2label: Dict[float, int] = dict()
 
         self._load_yaml_configs(configs_file_path)
-        self._load_feature_columns(feature_columns_file_path=os.path.join(self.output_dir_, "features.json"))
+        self.columns_feature = self.load_feature_columns_from_json(
+            feature_columns_file_path=os.path.join(self.output_dir_, "features.json"))
 
         # initialize
         self.input_data_dir: str = os.path.join(self.root_resource_path, self.dataset_name)
@@ -107,7 +108,8 @@ class BaseSolutionConfigs:
         self.scoring_func: Callable = PerformanceTracker().score
         # self._save_yaml_configs()
 
-    def _load_feature_columns(self, feature_columns_file_path: Optional[str] = None):
+    def load_feature_columns_from_json(
+            self, feature_columns_file_path: Optional[str] = None) -> List[str]:
         default_file_path: str = os.path.join(self.meta_data_dir, "features_numerai.json")
         if feature_columns_file_path is None:
             file_path = default_file_path
@@ -118,10 +120,10 @@ class BaseSolutionConfigs:
             logging.info(f"load feature target_columns from default location: {file_path}")
 
         with open(file_path, "r") as fp:
-            self.columns_feature = json.load(fp)
+            columns_feature = json.load(fp)
 
-        logging.info(f"load using {len(self.columns_feature)} features from {file_path}")
-        return self
+        logging.info(f"load using {len(columns_feature)} features from {file_path}")
+        return columns_feature
 
     def _load_yaml_configs(self, configs_file_path: str):
         if not all([os.path.exists(configs_file_path), os.path.isfile(configs_file_path)]):
@@ -204,6 +206,7 @@ class SolutionConfigs(BaseSolutionConfigs):
         self.early_stopping_rounds: Optional[int] = None
         self.num_boost_round: int = num_boost_round
 
+        self.feature_scorer_func: Optional[Callable] = None
         self.scorer_func_query: str = "sklearn_spearman_scorer"
         self.scorer_func: Optional[Callable[..., Any]] = None
         self.param_distributions: Optional[Dict[str, Any]] = None
@@ -271,10 +274,11 @@ class SolutionConfigs(BaseSolutionConfigs):
     @property
     def unfitted_model_(self) -> BaseEstimator:
         if self.model_best_params is None:
-            logging.info(f"generate model {self.model_gen} with base parameters: {self.base_params}")
+            logging.info(f"generate model {self.model_gen} with base parameters for fitting: {self.base_params}")
             return self.model_gen(**self.base_params)
 
-        logging.info(f"generate model {self.model_gen} with best fitted parameters: {self.model_best_params}")
+        logging.info(
+            f"generate model {self.model_gen} with best fitted parameters for fitting: {self.model_best_params}")
         return self.model_gen(**self.model_best_params)
 
     @property
@@ -353,7 +357,6 @@ class EnsembleSolutionConfigs(BaseSolutionConfigs):
 class NeutralizeSolutionConfigs(BaseSolutionConfigs):
     def __init__(
             self, root_resource_path: str, configs_file_path: str = "configs.yaml", eval_data_type: str = None, ):
-
         self.model_name: str = "neutralize_base"
         self.neutralize_model_configs: Optional[SolutionConfigs] = None
         self.model_dir: Optional[str] = None

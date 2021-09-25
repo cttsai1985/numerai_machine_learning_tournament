@@ -151,7 +151,7 @@ class EvaluationDataHelper(DataHelper):
         predictions = pd.concat([yhat, groups], axis=1)
         return predictions.groupby(groups.name)[yhat.name].apply(lambda x: Utils.pct_ranked(x))
 
-    def feature_neutralize(
+    def evaluate_with_feature_neutralize(
             self, yhat: pd.Series, col_yhat: str = "yhat", col_neutral: str = "neutral_yhat",
             cols_feature: Optional[List[str]] = None, proportion: float = 1., normalize: bool = True) -> pd.Series:
         if cols_feature is None:
@@ -164,8 +164,7 @@ class EvaluationDataHelper(DataHelper):
         predictions = yhat.to_frame()
         predictions[col_neutral] = data.groupby(groups_name).apply(
             lambda x: DiagnosticUtils.compute_neutralize(
-                x, target_columns=[col_yhat], neutralizers=cols_feature, proportion=proportion,
-                normalize=normalize))
+                x, target_columns=[col_yhat], neutralizers=cols_feature, proportion=proportion, normalize=normalize))
         return predictions[col_neutral].rename(col_yhat)
 
     def evaluate_with_feature(
@@ -173,17 +172,46 @@ class EvaluationDataHelper(DataHelper):
             **kwargs) -> pd.DataFrame:
 
         groups = self.groups_
-        data = self.X_
+        features = self.X_
         if not cols_feature:
             cols_feature = self.cols_feature
 
         if not method:
             method = Metrics.pearson_corr
 
-        data: pd.DataFrame = pd.concat([data, yhat, groups], axis=1)
+        data: pd.DataFrame = pd.concat([features, yhat, groups], axis=1)
         results = data.groupby(groups.name).apply(lambda x: DiagnosticUtils.feature_exposure(
             x, columns_feature=cols_feature, column_target=yhat.name, method=method))
         # results.columns.name = ""
+        logging.info(f"Evaluation with features: {data.shape[0]}:\n{results.max().describe()}")
+        return results
+
+    def evaluate_with_y_and_example(
+            self, yhat: pd.Series, example_yhat: pd.Series, method: Optional[Callable] = None,
+            col_yhat: str = "yhat", column_example: str = "example_prediction", **kwargs) -> pd.DataFrame:
+        groups = self.groups_
+        groups_name = groups.name
+
+        y = self.y_
+        y_name = y.name
+
+        if not method:
+            method = Metrics.pearson_corr
+
+        predictions: pd.DataFrame = pd.concat(
+            [y, Utils.scale_uniform(yhat).rename(col_yhat), Utils.scale_uniform(example_yhat).rename(column_example),
+             groups], axis=1)
+        predictions.dropna(inplace=True)
+        gpdf_predictions = predictions.groupby(groups_name)
+        example_corr = gpdf_predictions.apply(
+            lambda x: x[column_example].corr(other=x[col_yhat], method=method)).rename("examplePredsCorr")
+        meta_model_control = gpdf_predictions.apply(
+            lambda x: DiagnosticUtils.meta_model_control(
+                submit=x[y_name], example=x[column_example], target=x[col_yhat])).rename("metaModelControl")
+
+        # results.columns.name = ""
+        results = pd.concat([example_corr, meta_model_control], axis=1, sort=False)
+        logging.info(f"Evaluation with example predictions: {y_name}:\n{results}\n\n{results.describe()}")
         return results
 
     def evaluate_with_y(
@@ -207,10 +235,10 @@ class EvaluationDataHelper(DataHelper):
         # all score
         score_all: pd.DataFrame = scoring_func(
             y, predictions[col_yhat], scoring_type=scoring_type).to_frame("evaluationMean")
-        score_all["evaluationSharpeByEra"] = DiagnosticUtils.sharpe_ratio(score_split)
-        score_all["evaluationMeanByEra"] = score_split.mean()
-        score_all["evaluationStdByEra"] = score_split.std()
-        score_all["evaluationSmartSharpeByEra"] = DiagnosticUtils.smart_sharpe(score_split)
+        score_all["sharpeByEra"] = DiagnosticUtils.sharpe_ratio(score_split)
+        score_all["meanByEra"] = score_split.mean()
+        score_all["stdByEra"] = score_split.std()
+        score_all["smartSharpeByEra"] = DiagnosticUtils.smart_sharpe(score_split)
         score_all = score_all.T
         score_all.index.name = "metrics"
 
