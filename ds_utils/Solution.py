@@ -157,12 +157,12 @@ class BaseSolution:
 
         score_all = results[1]
         score_all.to_parquet(
-            os.path.join(self.working_dir, ft.score_target_all_filename_template.format(
+            os.path.join(self.working_dir, ft.score_all_filename_template.format(
                 eval_type=data_type, target=valid_data.y_name_)))
 
         score_split = results[2]
         score_split.to_parquet(
-            os.path.join(self.working_dir, ft.score_target_split_filename_template.format(
+            os.path.join(self.working_dir, ft.score_split_filename_template.format(
                 eval_type=data_type, target=valid_data.y_name_)))
 
         predictions = results[0]
