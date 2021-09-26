@@ -265,14 +265,12 @@ if "__main__" == __name__:
     ds_utils.initialize_logger()
     ds_utils.configure_pandas_display()
 
-    root_resource_path: str = "../input/numerai_tournament_resource/"
-    dataset_name: str = "latest_tournament_datasets"
+    root_resource_path: str = ft.root_resource_path
     _args = parse_commandline()
     configs = SolutionConfigs(root_resource_path=root_resource_path, configs_file_path=_args.configs)
 
-    _root_data_path = os.path.join(root_resource_path, dataset_name)
+    _root_data_path = ft.default_data_dir
     _columns_corr: List[str] = ["Pearson"]  # ["Spearman", "Pearson"]
-
     _allow_func_list: List[str] = [
         # profit
         "validSharpe",

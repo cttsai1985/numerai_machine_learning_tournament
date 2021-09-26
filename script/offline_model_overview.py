@@ -14,6 +14,7 @@ EXTERNAL_UTILS_LIB = os.path.join(Path().resolve().parent)
 sys.path.insert(0, EXTERNAL_UTILS_LIB)
 
 import ds_utils
+from ds_utils import FilenameTemplate as ft
 from numerai_utils import NumerAPIHelper
 
 _MetricsFuncMapping = {
@@ -102,7 +103,7 @@ if "__main__" == __name__:
     _col_score: str = "score"
     _column_path: str = "path"
     col_metric: str = "attr"
-    root_resource_path: str = "../input/numerai_tournament_resource/"
+    root_resource_path: str = ft.root_resource_path
 
     _args = parse_commandline()
 

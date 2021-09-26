@@ -67,7 +67,7 @@ class NumerAPIHelper:
         logging.info(f"current round identifier: {self.current_round_identifier}")
         self.latest_round_identifier: Optional[str] = None
         self.find_latest_round_identifier()
-
+        Path(self.result_dir_current_round_).mkdir(parents=True, exist_ok=True)
         #
         self.filenames: List[str] = _FILENAMES
 

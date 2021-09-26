@@ -4,14 +4,15 @@ from pathlib import Path
 from typing import List
 import pandas as pd
 
-if "__main__" == __name__:
-    root_dir: str = "../input/numerai_tournament_resource"
+from ds_utils import FilenameTemplate as ft
 
-    output_dir: str = os.path.join(root_dir, "metadata")
+if "__main__" == __name__:
+    root_dir: str = ft.root_resource_path
+    output_dir: str = ft.default_meta_data_dir
 
     #
     input_file_path: str = os.path.join(
-        root_dir, "latest_tournament_datasets", "numerai_validation_data.parquet")
+        ft.default_data_dir, ft.numerai_data_filename_template.format(eval_type="validation"))
     df = pd.read_parquet(input_file_path)
 
     columns: List[str] = df.columns.tolist()

@@ -1,8 +1,29 @@
+import os
 from typing import List, Tuple
+
+# root path
+root_resource_path: str = os.environ.get(
+    "rootResourcePath", os.path.join("..", "input", "numerai_tournament_resource"))
+default_data_dir: str = os.path.join(root_resource_path, "latest_tournament_datasets")
+default_meta_data_dir: str = os.path.join(root_resource_path, "metadata")
+
+
+numerai_data_filename_pairs: List[Tuple[str]] = [
+    ("training", "numerai_training_data.parquet",),
+    ("validation", "numerai_validation_data.parquet",),
+    ("tournament", "numerai_tournament_data.parquet",),
+    ("live", "numerai_live_data.parquet",),
+]
+
+numerai_example_filename_pairs: List[Tuple[str]] = [
+    ("validation", "example_validation_predictions.parquet"),
+    ("tournament", "example_predictions.parquet"),
+]
 
 # feature evaluation
 feature_exposure_filename_template: str = "{eval_type}_feature_exposure.parquet"
 example_analytics_filename_template: str = "{eval_type}_example_analytics.parquet"
+
 
 # score file
 score_split_filename_template: str = "{eval_type}_score_split.parquet"
@@ -22,15 +43,4 @@ example_predictions_parquet_filename: str = "example_predictions.parquet"
 
 #
 model_diagnostics_filename_template: str = "{eval_type}_model_diagnostics.{filename_extension}"
-
-numerai_data_filename_pairs: List[Tuple[str]] = [
-    ("training", "numerai_training_data.parquet",),
-    ("validation", "numerai_validation_data.parquet",),
-    ("tournament", "numerai_tournament_data.parquet",),
-    ("live", "numerai_live_data.parquet",),
-]
-
-numerai_example_filename_pairs: List[Tuple[str]] = [
-    ("validation", "example_validation_predictions.parquet"),
-    ("tournament", "example_predictions.parquet"),
-]
+prediction_diagnostics_filename_template: str = "{eval_type}_prediction_diagnostics.{filename_extension}"

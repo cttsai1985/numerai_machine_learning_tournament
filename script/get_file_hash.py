@@ -10,8 +10,9 @@ EXTERNAL_UTILS_LIB = os.path.join(Path().resolve().parent)
 sys.path.insert(0, EXTERNAL_UTILS_LIB)
 
 import ds_utils
-from ds_utils.Utils import get_file_hash
+from ds_utils import FilenameTemplate as ft
 from ds_utils import SolutionConfigs
+from ds_utils.Utils import get_file_hash
 
 ds_utils.configure_pandas_display()
 
@@ -31,10 +32,9 @@ if "__main__" == __name__:
 
     _args = parse_commandline()
 
-    root_resource_path: str = "../input/numerai_tournament_resource/"
-
     logging.info(f"file hash for {_args.configs}: {get_file_hash(_args.configs)}")
 
+    root_resource_path: str = ft.root_resource_path
     configs = SolutionConfigs(
         root_resource_path=root_resource_path, configs_file_path=_args.configs, eval_data_type="training", )
     output_data_path: str = configs.output_dir_

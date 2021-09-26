@@ -15,6 +15,7 @@ sys.path.insert(0, EXTERNAL_UTILS_LIB)
 
 import ds_utils
 from ds_utils import SolutionConfigs
+from ds_utils import FilenameTemplate as ft
 
 
 def parse_commandline() -> argparse.Namespace:
@@ -60,7 +61,7 @@ if "__main__" == __name__:
     ds_utils.configure_pandas_display()
 
     col_metric: str = "attr"
-    root_resource_path: str = "../input/numerai_tournament_resource/"
+    root_resource_path: str = ft.root_resource_path
 
     _args = parse_commandline()
     Path(_args.destination_output).mkdir(parents=True, exist_ok=True)

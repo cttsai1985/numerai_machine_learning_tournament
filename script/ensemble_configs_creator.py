@@ -15,6 +15,7 @@ EXTERNAL_UTILS_LIB = os.path.join(Path().resolve().parent)
 sys.path.insert(0, EXTERNAL_UTILS_LIB)
 
 import ds_utils
+from ds_utils import FilenameTemplate as ft
 from ds_utils import SolutionConfigs
 
 
@@ -58,7 +59,7 @@ if "__main__" == __name__:
     ds_utils.initialize_logger()
     ds_utils.configure_pandas_display()
 
-    root_resource_path: str = "../input/numerai_tournament_resource/"
+    root_resource_path: str = ft.root_resource_path
 
     _args = parse_commandline()
     _configs_template = ds_utils.Utils.load_yaml_configs(_args.ensemble_template)
