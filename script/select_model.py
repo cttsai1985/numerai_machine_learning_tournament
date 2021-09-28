@@ -57,7 +57,7 @@ if "__main__" == __name__:
     file_pattern = helper.result_dir_current_round_
     if _args.num_round is not None:
         file_pattern = os.path.join(
-            root_resource_path, "live_rounds", f"numerai_tournament_round_{_args.num_round:04d}")
+            root_resource_path, "live_rounds", ft.round_identifier_template)
 
     df = dd.read_csv(os.path.join(file_pattern, "*.csv"), include_path_column=True).compute()
     df["path"] = df["path"].apply(lambda x: Path(x).stem)

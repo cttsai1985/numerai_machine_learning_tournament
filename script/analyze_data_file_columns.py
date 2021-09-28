@@ -21,13 +21,13 @@ if "__main__" == __name__:
     Path(output_dir).mkdir(parents=True, exist_ok=True)
 
     target_columns = sorted(list(filter(lambda x: x.startswith("target_"), columns)))
-    output_filename: str = os.path.join(output_dir, "targets.json")
+    output_filename: str = os.path.join(output_dir, ft.default_target_collection_filename)
     with open(output_filename, "w") as f:
         json.dump(target_columns, f)
         print(f"save {len(target_columns)} targets to {output_filename}")
 
     feature_columns = sorted(list(filter(lambda x: x.startswith("feature_"), columns)))
-    output_filename: str = os.path.join(output_dir, "features_numerai.json")
+    output_filename: str = os.path.join(output_dir, ft.default_feature_collection_filename)
     with open(output_filename, "w") as f:
         json.dump(feature_columns, f)
         print(f"save {len(feature_columns)} features to {output_filename}")
