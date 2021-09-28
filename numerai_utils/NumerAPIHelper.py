@@ -55,7 +55,7 @@ class NumerAPIHelper:
 
         self.root_dir_path = root_dir_path
         if root_dir_path is None:
-            self.root_dir_path: str = os.path.join("..", "input", "numerai_tournament_resource")
+            self.root_dir_path: str = os.environ.get("rootResourcePath")
         logging.info(f"current root path: {self.root_dir_path}")
 
         self.data_dir_path: str = os.path.join(self.root_dir_path, "latest_tournament_datasets")
