@@ -11,7 +11,7 @@ sys.path.insert(0, EXTERNAL_UTILS_LIB)
 
 import ds_utils
 from ds_utils import FilenameTemplate as ft
-from ds_utils import Solution, SolutionConfigs, OptunaLGBMTuner
+from ds_utils import AutoSolution, SolutionConfigs, OptunaLGBMTuner
 from ds_utils import RefreshLevel
 
 ds_utils.configure_pandas_display()
@@ -79,7 +79,7 @@ def main(args: argparse.Namespace):
         tuner.run(data_type=args.eval_data_type)
 
     configs.load_optimized_params_from_tuner(tuner=tuner)
-    solver = Solution.from_configs(args=args, configs=configs, output_data_path=output_data_path)
+    solver = AutoSolution.from_configs(args=args, configs=configs, output_data_path=output_data_path)
     if args.compute_eval:
         solver.evaluate(train_data_type=args.eval_data_type, valid_data_type="validation")
 

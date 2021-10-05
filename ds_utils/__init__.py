@@ -5,7 +5,7 @@ from .DefaultConfigs import RefreshLevel
 from . import Utils
 from . import Helper
 from . import CustomSplit
-from .Solution import Solution, EnsembleSolution
+from .Solution import AutoSolution, EnsembleSolution
 from .SolutionConfigs import SolutionConfigs, EnsembleSolutionConfigs
 from .Tuner import OptunaLGBMTuner
 from . import Metrics

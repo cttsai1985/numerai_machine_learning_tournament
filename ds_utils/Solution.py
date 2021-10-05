@@ -3,6 +3,7 @@ import os
 import json
 import joblib
 import logging
+import numpy as np
 import pandas as pd
 from copy import deepcopy
 from argparse import Namespace
@@ -19,18 +20,29 @@ from ds_utils.DefaultConfigs import RefreshLevel
 _EPSILON: float = sys.float_info.min
 
 
-class BaseSolution:
+class ISolution:
+    def evaluate(self, train_data_type: str = "training", valid_data_type: str = "validation", ):
+        raise NotImplementedError()
+
+    def run(self, train_data_type: str = "training", infer_data_type: str = "tournament", ):
+        raise NotImplementedError()
+
+    @classmethod
+    def from_configs(cls, args: Namespace, configs: "SolutionConfigs", output_data_path: str, **kwargs):
+        raise NotImplementedError()
+
+
+class MixinSolution(ISolution):
+    """
+    Useful Mixin Class for lots of utility
+    """
+
     def __init__(
             self, refresh_level: RefreshLevel, data_manager: "DataManager", scoring_func: Optional[Callable] = None,
             working_dir: Optional[str] = None, **kwargs):
         # default variable
         self.default_yhat_name: str = "yhat"
         self.default_yhat_pct_name: str = "prediction"
-
-        self.is_fitted: bool = False
-
-        self.refresh_level_criterion: RefreshLevel = RefreshLevel("model")
-        self.refresh_level: RefreshLevel = refresh_level
 
         self.working_dir: str = working_dir if working_dir else "./"
         Path(self.working_dir).mkdir(parents=True, exist_ok=True)
@@ -39,39 +51,153 @@ class BaseSolution:
         self.scoring_func: Callable = scoring_func
         self.feature_scoring_func: Optional[Callable] = None
 
-    def _cast_for_classifier(self, target: pd.Series, cast_type: str):
-        if self.data_manager.has_cast_mapping(cast_type):
-            return self.data_manager.cast_target(target, cast_type)
+        # default state
+        self.is_fitted: bool = False
 
-        return target
+        self.refresh_level_criterion: RefreshLevel = RefreshLevel("model")
+        self.refresh_level: RefreshLevel = refresh_level
 
-    def _cast_for_classifier_fit(self, target: pd.Series) -> pd.Series:
-        return self._cast_for_classifier(target=target, cast_type="label2index")
+    def evaluate(self, train_data_type: str = "training", valid_data_type: str = "validation", ):
+        raise NotImplementedError()
 
-    def _cast_for_classifier_predict(self, target: pd.Series) -> pd.Series:
-        return self._cast_for_classifier(target=target, cast_type="index2label")
+    def run(self, train_data_type: str = "training", infer_data_type: str = "tournament", ):
+        raise NotImplementedError()
 
-    def _create_submission_file(self, yhat: pd.Series, data_type: str):
+    @classmethod
+    def from_configs(cls, args: Namespace, configs: "SolutionConfigs", output_data_path: str, **kwargs):
+        raise NotImplementedError()
+
+    def _create_submission_file(self, yhat: pd.Series, data_type: str = "validation") -> pd.Series:
+        """
+
+        :param yhat:
+        :param data_type:
+        :return:
+        """
         filepath: str = os.path.join(self.working_dir, ft.predictions_csv_filename_template.format(eval_type=data_type))
         predictions = self.data_manager.get_example_data_by_type(data_type=data_type).squeeze()
         yhat.index.name = predictions.index.name
         yhat.reindex(index=predictions.index).rename(predictions.name).to_csv(filepath)
+        return yhat
+
+    def _do_evaluation_on_learning_target(self, yhat: pd.Series, data_type: str = "validation") -> pd.Series:
+        """
+
+        :param yhat:
+        :param data_type:
+        :return:
+        """
+        logging.info(f"evaluation on learning target: data_type={data_type}")
+        valid_data = self.data_manager.get_data_helper_by_type(data_type=data_type, for_evaluation=False)
+        results = valid_data.evaluate_with_y(yhat=yhat, scoring_func=self.scoring_func)
+
+        score_all = results[1]
+        score_all.to_parquet(
+            os.path.join(self.working_dir, ft.score_target_all_filename_template.format(
+                eval_type=data_type, target=valid_data.y_name_)))
+
+        score_split = results[2]
+        score_split.to_parquet(
+            os.path.join(self.working_dir, ft.score_target_split_filename_template.format(
+                eval_type=data_type, target=valid_data.y_name_)))
+
+        predictions = results[0]
+        return predictions
+
+    def _do_evaluation_on_tournament_target(self, yhat: pd.Series, data_type: str = "validation") -> pd.Series:
+        """
+
+        :param yhat:
+        :param data_type:
+        :return:
+        """
+        logging.info(f"evaluation on tournament target: data_type={data_type}")
+        valid_data = self.data_manager.get_data_helper_by_type(data_type=data_type, for_evaluation=True)
+
+        # feature exposure
+        feature_evaluation = valid_data.evaluate_with_feature(yhat)
+        feature_evaluation.to_parquet(
+            os.path.join(self.working_dir, ft.feature_exposure_filename_template.format(eval_type=data_type)))
+
+        # performance evaluation for prediction results
+        results = valid_data.evaluate_with_y(yhat=yhat, scoring_func=self.scoring_func)
+
+        score_all = results[1]
+        score_all.to_parquet(
+            os.path.join(self.working_dir, ft.score_all_filename_template.format(
+                eval_type=data_type, target=valid_data.y_name_)))
+
+        score_split = results[2]
+        score_split.to_parquet(
+            os.path.join(self.working_dir, ft.score_split_filename_template.format(
+                eval_type=data_type, target=valid_data.y_name_)))
+
+        predictions = results[0]
+        predictions[self.default_yhat_pct_name] = valid_data.pct_rank_normalize(predictions[self.default_yhat_name])
+        predictions.to_parquet(
+            os.path.join(self.working_dir, ft.predictions_parquet_filename_template.format(eval_type=data_type)))
+        return predictions
+
+    def _do_evaluation_on_example_prediction(self, yhat: pd.Series, data_type: str = "validation") -> pd.DataFrame:
+        """
+        Example Analytics such as Corr with Example Predictions and Meta Model Control
+        :param yhat:
+        :param data_type:
+        :return:
+        """
+        logging.info(f"evaluation on tournament example: data_type={data_type}")
+        valid_data = self.data_manager.get_data_helper_by_type(data_type=data_type, for_evaluation=True)
+
+        # corr with y example
+        example_predictions = self.data_manager.get_example_data_by_type(data_type=data_type).squeeze()
+        if not example_predictions.empty:
+            example_analytics = valid_data.evaluate_with_y_and_example(yhat=yhat, example_yhat=example_predictions)
+            example_analytics.to_parquet(
+                os.path.join(self.working_dir, ft.example_analytics_filename_template.format(eval_type=data_type)))
+            return example_analytics
+
+        return pd.DataFrame()
+
+    def _do_evaluation_on_feature_neutralize(self, yhat: pd.Series, data_type: str = "validation") -> pd.Series:
+        """
+
+        :param yhat:
+        :param data_type:
+        :return:
+        """
+        logging.info(f"evaluation on feature neutralize: data_type={data_type}")
+        valid_data = self.data_manager.get_data_helper_by_type(data_type=data_type, for_evaluation=True)
+
+        # feature exposure
+        feature_neutralize = valid_data.evaluate_with_feature_neutralize(
+            yhat, cols_feature=None, proportion=1., normalize=True)
+        feature_neutralize.to_frame("featureNeutralCorr").to_parquet(
+            os.path.join(self.working_dir, ft.example_corr_filename_template.format(eval_type=data_type)))
+
+        return feature_neutralize
+
+    def _post_process_tournament(self, yhat: pd.Series, data_type: str = "tournament") -> pd.Series:
+        """
+        
+        :param yhat:
+        :param data_type:
+        :return:
+        """
+        infer_data = self.data_manager.get_data_helper_by_type(data_type=data_type, for_evaluation=True)
+        predictions = yhat.to_frame()
+        predictions[self.default_yhat_pct_name] = infer_data.pct_rank_normalize(predictions[yhat.name])
+        predictions[infer_data.group_name_] = infer_data.groups_
+
+        predictions.to_parquet(
+            os.path.join(self.working_dir, ft.predictions_parquet_filename_template.format(eval_type=data_type)))
+        return predictions
+        raise NotImplementedError()
 
     def _do_cross_val(self, data_type: Optional[str] = None):
         raise NotImplementedError()
 
-    def _do_model_fit_for_training(self, data_type: str):
-        raise NotImplementedError()
-
     def _do_model_fit(self, data_type: Optional[str] = None):
-        if not data_type:
-            data_type = "training"
-
-        if self.is_fitted:
-            return self
-
-        self._do_model_fit_for_training(data_type=data_type)
-        return self
+        raise NotImplementedError()
 
     def _do_inference_for_validation(self, data_type: str) -> pd.Series:
         raise NotImplementedError()
@@ -95,7 +221,7 @@ class BaseSolution:
     def _do_inference_for_tournament(self, data_type: str) -> pd.Series:
         raise NotImplementedError()
 
-    def _do_inference(self, data_type: str = "tournament", ):
+    def _do_tournament(self, data_type: Optional[str] = None):
         logging.info(f"inference on {data_type}")
         if not self.is_fitted:
             logging.warning(f"skip inference since model is not fitted yet")
@@ -105,120 +231,12 @@ class BaseSolution:
         self._create_submission_file(yhat, data_type=data_type)
         return self
 
-    def save_model(self):
-        raise NotImplementedError()
 
-    def load_model(self):
-        raise NotImplementedError()
-
-    def evaluate(self, train_data_type: str = "training", valid_data_type: str = "validation", ):
-        self._do_cross_val(data_type=train_data_type)
-
-        self.load_model()
-        self._do_model_fit(data_type=train_data_type)
-        self._do_validation(data_type=valid_data_type)
-        return self
-
-    def run(self, train_data_type: str = "training", infer_data_type: str = "tournament", ):
-        self.load_model()
-        self._do_model_fit(data_type=train_data_type)
-        self._do_inference(data_type=infer_data_type)
-        return self
-
-    def _do_evaluation_on_learning_target(self, yhat: pd.Series, data_type: str = "validation") -> pd.Series:
-        logging.info(f"evaluation on learning target: data_type={data_type}")
-        valid_data = self.data_manager.get_data_helper_by_type(data_type=data_type, for_evaluation=False)
-        results = valid_data.evaluate_with_y(yhat=yhat, scoring_func=self.scoring_func)
-
-        score_all = results[1]
-        score_all.to_parquet(
-            os.path.join(self.working_dir, ft.score_target_all_filename_template.format(
-                eval_type=data_type, target=valid_data.y_name_)))
-
-        score_split = results[2]
-        score_split.to_parquet(
-            os.path.join(self.working_dir, ft.score_target_split_filename_template.format(
-                eval_type=data_type, target=valid_data.y_name_)))
-
-        predictions = results[0]
-        return predictions
-
-    def _do_evaluation_on_tournament_target(self, yhat: pd.Series, data_type: str = "validation") -> pd.Series:
-        logging.info(f"evaluation on tournament target: data_type={data_type}")
-        valid_data = self.data_manager.get_data_helper_by_type(data_type=data_type, for_evaluation=True)
-
-        # feature exposure
-        feature_evaluation = valid_data.evaluate_with_feature(yhat)
-        feature_evaluation.to_parquet(
-            os.path.join(self.working_dir, ft.feature_exposure_filename_template.format(eval_type=data_type)))
-
-        # prediction results
-        results = valid_data.evaluate_with_y(yhat=yhat, scoring_func=self.scoring_func)
-
-        score_all = results[1]
-        score_all.to_parquet(
-            os.path.join(self.working_dir, ft.score_all_filename_template.format(
-                eval_type=data_type, target=valid_data.y_name_)))
-
-        score_split = results[2]
-        score_split.to_parquet(
-            os.path.join(self.working_dir, ft.score_split_filename_template.format(
-                eval_type=data_type, target=valid_data.y_name_)))
-
-        predictions = results[0]
-        predictions[self.default_yhat_pct_name] = valid_data.pct_rank_normalize(predictions[self.default_yhat_name])
-        predictions.to_parquet(
-            os.path.join(self.working_dir, ft.predictions_parquet_filename_template.format(eval_type=data_type)))
-        return predictions
-
-    def _do_evaluation_on_tournament_example(self, yhat: pd.Series, data_type: str = "validation") -> pd.DataFrame:
-        logging.info(f"evaluation on tournament example: data_type={data_type}")
-        valid_data = self.data_manager.get_data_helper_by_type(data_type=data_type, for_evaluation=True)
-
-        # corr with y example
-        example_predictions = self.data_manager.get_example_data_by_type(data_type=data_type).squeeze()
-        if not example_predictions.empty:
-            example_analytics = valid_data.evaluate_with_y_and_example(yhat=yhat, example_yhat=example_predictions)
-            example_analytics.to_parquet(
-                os.path.join(self.working_dir, ft.example_analytics_filename_template.format(eval_type=data_type)))
-            return example_analytics
-
-        return pd.DataFrame()
-
-    def _do_evaluation_on_feature_neutralize(self, yhat: pd.Series, data_type: str = "validation") -> pd.Series:
-        logging.info(f"evaluation on feature neutralize: data_type={data_type}")
-        valid_data = self.data_manager.get_data_helper_by_type(data_type=data_type, for_evaluation=True)
-
-        # feature exposure
-        feature_neutralize = valid_data.evaluate_with_feature_neutralize(
-            yhat, cols_feature=None, proportion=1., normalize=True)
-        feature_neutralize.to_frame("featureNeutralCorr").to_parquet(
-            os.path.join(self.working_dir, ft.example_corr_filename_template.format(eval_type=data_type)))
-
-        return feature_neutralize
-
-    def _post_process_inference(self, yhat: pd.Series, data_type: str = "tournament") -> pd.Series:
-        infer_data = self.data_manager.get_data_helper_by_type(data_type=data_type, for_evaluation=True)
-        predictions = yhat.to_frame()
-        predictions[self.default_yhat_pct_name] = infer_data.pct_rank_normalize(predictions[yhat.name])
-        predictions[infer_data.group_name_] = infer_data.groups_
-
-        predictions.to_parquet(
-            os.path.join(self.working_dir, ft.predictions_parquet_filename_template.format(eval_type=data_type)))
-        return predictions
-
-    @classmethod
-    def from_configs(cls, args: Namespace, configs: "SolutionConfigs", output_data_path: str, **kwargs):
-        raise NotImplementedError()
-
-
-class Solution(BaseSolution):
+class ScikitEstimatorSolution(MixinSolution):
     def __init__(
             self, refresh_level: RefreshLevel, data_manager: "DataManager", model: BaseEstimator,
             fit_params: Optional[Dict[str, Any]] = None, cv_splitter: Optional[BaseCrossValidator] = None,
-            scoring_func: Optional[Callable] = None,
-            working_dir: Optional[str] = None, **kwargs):
-
+            scoring_func: Optional[Callable] = None, working_dir: Optional[str] = None, **kwargs):
         super().__init__(
             refresh_level=refresh_level, data_manager=data_manager, scoring_func=scoring_func, working_dir=working_dir)
 
@@ -230,11 +248,23 @@ class Solution(BaseSolution):
         if cv_splitter is not None:
             self.has_cv_splitter = True
 
+    def _cast_for_classifier(self, target: pd.Series, cast_type: str):
+        if self.data_manager.has_cast_mapping(cast_type):
+            return self.data_manager.cast_target(target, cast_type)
+
+        return target
+
+    def _cast_for_classifier_fit(self, target: pd.Series) -> pd.Series:
+        return self._cast_for_classifier(target=target, cast_type="label2index")
+
+    def _cast_for_classifier_predict(self, target: pd.Series) -> pd.Series:
+        return self._cast_for_classifier(target=target, cast_type="index2label")
+
     @property
     def model_filepath_(self) -> str:
         return os.path.join(self.working_dir, "model.pkl")
 
-    def save_model(self):
+    def _save_model(self):
         if not self.is_fitted:
             logging.info(f"cannot save model due to not fitted")
             return self
@@ -243,12 +273,13 @@ class Solution(BaseSolution):
         joblib.dump(deepcopy(self.model), self.model_filepath_)
         return self
 
-    def load_model(self):
-        if not (os.path.exists(self.model_filepath_) or os.path.isfile(self.model_filepath_)):
+    def _load_model(self):
+        _model_filepath = self.model_filepath_
+        if not (os.path.exists(_model_filepath) or os.path.isfile(_model_filepath)):
             return self
 
         if self.is_fitted:
-            logging.info(f"model fitted and loaded.")
+            logging.info(f"model fitted and loaded, from {_model_filepath}")
             return self
 
         if self.refresh_level <= self.refresh_level_criterion:
@@ -256,8 +287,8 @@ class Solution(BaseSolution):
                 f"skip loading model and refit ({self.refresh_level} <= {self.refresh_level_criterion})")
             return self
 
-        logging.info(f"load pre-fitted model from {self.model_filepath_}")
-        model = joblib.load(self.model_filepath_)
+        logging.info(f"load pre-fitted model from {_model_filepath}")
+        model = joblib.load(_model_filepath)
         if not isinstance(model, type(self.model)):
             logging.info(f"model mismatched: from file ({type(model)}) != model ({type(self.model)})")
             raise ValueError(f"model mismatched: from file ({type(model)}) != model ({type(self.model)})")
@@ -269,14 +300,56 @@ class Solution(BaseSolution):
     def _do_cross_val(self, data_type: Optional[str] = None):
         pass
 
-    def _do_model_fit_for_training(self, data_type: str):
+    def _do_model_fit(self, data_type: Optional[str] = None):
+        raise NotImplementedError()
+
+    def _do_inference_for_validation(self, data_type: str) -> pd.Series:
+        raise NotImplementedError()
+
+    def _do_inference_for_tournament(self, data_type: str) -> pd.Series:
+        raise NotImplementedError()
+
+    def evaluate(self, train_data_type: str = "training", valid_data_type: str = "validation", ):
+        self._do_cross_val(data_type=train_data_type)
+
+        self._load_model()
+        self._do_model_fit(data_type=train_data_type)
+        self._do_validation(data_type=valid_data_type)
+        return self
+
+    def run(self, train_data_type: str = "training", infer_data_type: str = "tournament", ):
+        self._load_model()
+        self._do_model_fit(data_type=train_data_type)
+        self._do_tournament(data_type=infer_data_type)
+        return self
+
+    @classmethod
+    def from_configs(cls, args: Namespace, configs: "SolutionConfigs", output_data_path: str, **kwargs):
+        return cls(
+            refresh_level=args.refresh_level, data_manager=configs.data_manager_, model=configs.unfitted_model_,
+            scoring_func=configs.scoring_func, cv_splitter=configs.cv_splitter_, working_dir=output_data_path, **kwargs)
+
+
+class RegressorSolution(ScikitEstimatorSolution):
+    def __init__(
+            self, refresh_level: RefreshLevel, data_manager: "DataManager", model: BaseEstimator,
+            fit_params: Optional[Dict[str, Any]] = None, cv_splitter: Optional[BaseCrossValidator] = None,
+            scoring_func: Optional[Callable] = None, working_dir: Optional[str] = None, **kwargs):
+        super().__init__(
+            refresh_level=refresh_level, data_manager=data_manager, model=model, fit_params=fit_params,
+            cv_splitter=cv_splitter, scoring_func=scoring_func, working_dir=working_dir, *kwargs)
+
+    def _do_model_fit(self, data_type: Optional[str] = None):
+        if self.is_fitted:
+            return self
+
         train_data = self.data_manager.get_data_helper_by_type(data_type=data_type)
         X, y, groups = train_data.data_
 
         logging.info(f"training model...")
         self.model.fit(X, y, **self.fit_params)  # TODO: add fit_params:
         self.is_fitted = True
-        self.save_model()
+        self._save_model()
         return self
 
     def _do_inference_for_validation(self, data_type: str) -> pd.Series:
@@ -290,7 +363,7 @@ class Solution(BaseSolution):
             _ = self._do_evaluation_on_learning_target(yhat=yhat, data_type=data_type)
 
         # _ = self._do_evaluation_on_feature_neutralize(yhat=yhat, data_type=data_type)
-        _ = self._do_evaluation_on_tournament_example(yhat=yhat, data_type=data_type)
+        _ = self._do_evaluation_on_example_prediction(yhat=yhat, data_type=data_type)
         valid_predictions = self._do_evaluation_on_tournament_target(yhat=yhat, data_type=data_type)
         return valid_predictions[self.default_yhat_pct_name]
 
@@ -301,31 +374,125 @@ class Solution(BaseSolution):
 
         predictions = y.to_frame()
         predictions[self.default_yhat_name] = self.model.predict(X)
-        predictions = self._post_process_inference(yhat=predictions[self.default_yhat_name], data_type=data_type)
+        predictions = self._post_process_tournament(yhat=predictions[self.default_yhat_name], data_type=data_type)
         return predictions[self.default_yhat_pct_name]
 
-    def evaluate(self, train_data_type: str = "training", valid_data_type: str = "validation", ):
-        self._do_cross_val(data_type=train_data_type)
 
-        self.load_model()
-        self._do_model_fit(data_type=train_data_type)
-        self._do_validation(data_type=valid_data_type)
+class RankerSolution(ScikitEstimatorSolution):
+    def __init__(
+            self, refresh_level: RefreshLevel, data_manager: "DataManager", model: BaseEstimator,
+            fit_params: Optional[Dict[str, Any]] = None, cv_splitter: Optional[BaseCrossValidator] = None,
+            scoring_func: Optional[Callable] = None, working_dir: Optional[str] = None, **kwargs):
+        super().__init__(
+            refresh_level=refresh_level, data_manager=data_manager, model=model, fit_params=fit_params,
+            cv_splitter=cv_splitter, scoring_func=scoring_func, working_dir=working_dir, **kwargs)
+
+    def _do_model_fit(self, data_type: Optional[str] = None):
+        if self.is_fitted:
+            return self
+
+        train_data = self.data_manager.get_data_helper_by_type(data_type=data_type)
+        X, y, groups = train_data.data_
+
+        _groups = train_data.group_counts_
+
+        logging.info(f"training model...")
+        self.model.fit(X, self._cast_for_classifier_fit(y), group=_groups, **self.fit_params)  # TODO: add fit_params:
+        self.is_fitted = True
+        self._save_model()
         return self
 
-    def run(self, train_data_type: str = "training", infer_data_type: str = "tournament", ):
-        self.load_model()
-        self._do_model_fit(data_type=train_data_type)
-        self._do_inference(data_type=infer_data_type)
+    def inference_on_group(self, infer_data) -> pd.Series:
+        X, y, groups = infer_data.data_
+        X[groups.name] = groups
+
+        yhat = X.groupby(groups.name).apply(lambda x: pd.Series(
+            self.model.predict(x[infer_data.cols_feature]), index=x.index)).rename(self.default_yhat_name)
+
+        return yhat.reset_index(groups.name)[self.default_yhat_name]
+
+    def _do_inference_for_validation(self, data_type: str) -> pd.Series:
+        logging.info(f"inference for validation: {data_type}")
+        valid_data = self.data_manager.get_data_helper_by_type(data_type=data_type, for_evaluation=False)
+        yhat = self.inference_on_group(infer_data=valid_data)
+
+        # target for learning
+        if valid_data.y_name_ != "target":
+            _ = self._do_evaluation_on_learning_target(yhat=yhat, data_type=data_type)
+
+        # _ = self._do_evaluation_on_feature_neutralize(yhat=yhat, data_type=data_type)
+        _ = self._do_evaluation_on_example_prediction(yhat=yhat, data_type=data_type)
+        valid_predictions = self._do_evaluation_on_tournament_target(yhat=yhat, data_type=data_type)
+        return valid_predictions[self.default_yhat_pct_name]
+
+    def _do_inference_for_tournament(self, data_type: str) -> pd.Series:
+        logging.info(f"inference for tournament: {data_type}")
+        infer_data = self.data_manager.get_data_helper_by_type(data_type=data_type, for_evaluation=False)
+
+        predictions = infer_data.y_.to_frame()
+        predictions[self.default_yhat_name] = self.inference_on_group(infer_data=infer_data)
+        predictions = self._post_process_tournament(yhat=predictions[self.default_yhat_name], data_type=data_type)
+        return predictions[self.default_yhat_pct_name]
+
+
+class ClassifierSolution(ScikitEstimatorSolution):
+    def __init__(
+            self, refresh_level: RefreshLevel, data_manager: "DataManager", model: BaseEstimator,
+            fit_params: Optional[Dict[str, Any]] = None, cv_splitter: Optional[BaseCrossValidator] = None,
+            scoring_func: Optional[Callable] = None, working_dir: Optional[str] = None, **kwargs):
+        super().__init__(
+            refresh_level=refresh_level, data_manager=data_manager, model=model, fit_params=fit_params,
+            cv_splitter=cv_splitter, scoring_func=scoring_func, working_dir=working_dir, **kwargs)
+
+    def _do_model_fit(self, data_type: Optional[str] = None):
+        if self.is_fitted:
+            return self
+
+        train_data = self.data_manager.get_data_helper_by_type(data_type=data_type)
+        X, y, groups = train_data.data_
+
+        logging.info(f"training model...")
+        self.model.fit(X, self._cast_for_classifier_fit(y), **self.fit_params)  # TODO: add fit_params:
+        self.is_fitted = True
+        self._save_model()
         return self
 
-    @classmethod
-    def from_configs(cls, args: Namespace, configs: "SolutionConfigs", output_data_path: str, **kwargs):
-        return cls(
-            args.refresh_level, configs.data_manager_, configs.unfitted_model_, scoring_func=configs.scoring_func,
-            cv_splitter=configs.cv_splitter_, working_dir=output_data_path, **kwargs)
+    def _cast_for_classifier_predict_proba(self, target: np.ndarray) -> np.ndarray:
+        return np.dot(target, list(self.data_manager.index2label.values()))
+
+    def _do_inference_for_validation(self, data_type: str) -> pd.Series:
+        logging.info(f"inference for validation: {data_type}")
+        valid_data = self.data_manager.get_data_helper_by_type(data_type=data_type, for_evaluation=False)
+        X, y, groups = valid_data.data_
+
+        yhat = self.model.predict_proba(X)
+        # yhat = self._cast_for_classifier_predict(pd.Series(yhat, index=y.index, name=self.default_yhat_name))
+        yhat = pd.Series(
+            self._cast_for_classifier_predict_proba(yhat), index=y.index, name=self.default_yhat_name)
+
+        # target for learning
+        if valid_data.y_name_ != "target":
+            _ = self._do_evaluation_on_learning_target(yhat=yhat, data_type=data_type)
+
+        # _ = self._do_evaluation_on_feature_neutralize(yhat=yhat, data_type=data_type)
+        _ = self._do_evaluation_on_example_prediction(yhat=yhat, data_type=data_type)
+        valid_predictions = self._do_evaluation_on_tournament_target(yhat=yhat, data_type=data_type)
+        return valid_predictions[self.default_yhat_pct_name]
+
+    def _do_inference_for_tournament(self, data_type: str) -> pd.Series:
+        logging.info(f"inference for tournament: {data_type}")
+        infer_data = self.data_manager.get_data_helper_by_type(data_type=data_type, for_evaluation=False)
+        X, y, groups = infer_data.data_
+
+        predictions = y.to_frame()
+        # predictions[self.default_yhat_name] = self.model.predict(X)
+        # predictions[self.default_yhat_name] = self._cast_for_classifier_predict(predictions[self.default_yhat_name])
+        predictions[self.default_yhat_name] = self._cast_for_classifier_predict_proba(self.model.predict_proba(X))
+        predictions = self._post_process_tournament(yhat=predictions[self.default_yhat_name], data_type=data_type)
+        return predictions[self.default_yhat_pct_name]
 
 
-class EnsembleSolution(BaseSolution):
+class EnsembleSolution(MixinSolution):
     def __init__(
             self, refresh_level: RefreshLevel, data_manager: "DataManager", ensemble_method: str,
             solution_dirs: List[str], scoring_func: Optional[Callable] = None, working_dir: Optional[str] = None,
@@ -339,7 +506,7 @@ class EnsembleSolution(BaseSolution):
     def _do_cross_val(self, data_type: Optional[str] = None):
         raise NotImplementedError()
 
-    def _do_model_fit_for_training(self, data_type: str):
+    def _do_model_fit(self, data_type: Optional[str] = None):
         raise NotImplementedError()
 
     @staticmethod
@@ -349,9 +516,11 @@ class EnsembleSolution(BaseSolution):
 
         return df
 
-    def _ensemble_predictions(self, eval_type: str, groupby_col: str) -> pd.DataFrame:
-        data_helper = self.data_manager.get_data_helper_by_type(data_type=eval_type)
+    def _ensemble_predictions(self, eval_type: str) -> pd.DataFrame:
         logging.info(f"ensemble for {eval_type}")
+        infer_data = self.data_manager.get_data_helper_by_type(data_type=eval_type, for_evaluation=False)
+        y = infer_data.y_
+        groupby_col = infer_data.group_name_
 
         cols_prediction = list()
         df = pd.DataFrame()
@@ -385,34 +554,26 @@ class EnsembleSolution(BaseSolution):
         logging.info(f"Generated {ret.shape[0]} predictions from {df.shape[0]} samples")
 
         logging.info(f"correlation intra predictions:\n{df.groupby(groupby_col).corr(method='spearman')}")
-        return ret
+        return ret.reindex(index=y.index)
 
     def _do_inference_for_validation(self, data_type: str) -> pd.Series:
-        valid_data = self.data_manager.get_data_helper_by_type(data_type=data_type, for_evaluation=False)
-        y = valid_data.y_
-
-        predictions = self._ensemble_predictions(data_type, groupby_col=valid_data.group_name_).reindex(index=y.index)
+        predictions = self._ensemble_predictions(data_type)
         if predictions.empty:
             logging.warning(f"skip inference since the ensemble predictions are empty")
             return self
 
         yhat = predictions[self.default_yhat_name]
-        # _ = self._do_evaluation_on_feature_neutralize(yhat=yhat, data_type=data_type)
-        _ = self._do_evaluation_on_tournament_example(yhat=yhat, data_type=data_type)
-        valid_predictions = self._do_evaluation_on_tournament_target(yhat=yhat, data_type=data_type)
-        return valid_predictions[self.default_yhat_pct_name]
+        _ = self._do_evaluation_on_example_prediction(yhat=yhat, data_type=data_type)
+        predictions = self._do_evaluation_on_tournament_target(yhat=yhat, data_type=data_type)
+        return predictions[self.default_yhat_pct_name]
 
     def _do_inference_for_tournament(self, data_type: str) -> pd.Series:
-        infer_data = self.data_manager.get_data_helper_by_type(data_type=data_type, for_evaluation=False)
-        y = infer_data.y_
-
-        predictions = self._ensemble_predictions(
-            data_type, groupby_col=infer_data.group_name_).reindex(index=y.index)
+        predictions = self._ensemble_predictions(data_type)
         if predictions.empty:
             logging.warning(f"skip inference since the ensemble predictions are empty")
             return self
 
-        predictions = self._post_process_inference(yhat=predictions[self.default_yhat_name], data_type=data_type)
+        predictions = self._post_process_tournament(yhat=predictions[self.default_yhat_name], data_type=data_type)
         return predictions[self.default_yhat_pct_name]
 
     def evaluate(self, train_data_type: str = "training", valid_data_type: str = "validation", ):
@@ -420,14 +581,8 @@ class EnsembleSolution(BaseSolution):
         return self
 
     def run(self, train_data_type: str = "training", infer_data_type: str = "tournament", ):
-        self._do_inference(data_type=infer_data_type)
+        self._do_tournament(data_type=infer_data_type)
         return self
-
-    def save_model(self):
-        raise NotImplementedError()
-
-    def load_model(self):
-        raise NotImplementedError()
 
     @classmethod
     def from_configs(
@@ -437,75 +592,27 @@ class EnsembleSolution(BaseSolution):
             solution_dirs=configs.model_dirs, scoring_func=configs.scoring_func, working_dir=output_data_path, **kwargs)
 
 
-class NeutralizeSolution(BaseSolution):
-    def __init__(
-            self, refresh_level: RefreshLevel, data_manager: "DataManager",
-            scoring_func: Optional[Callable] = None, working_dir: Optional[str] = None,
-            **kwargs):
-        super().__init__(
-            refresh_level=refresh_level, data_manager=data_manager, scoring_func=scoring_func, working_dir=working_dir)
-
-    def _do_cross_val(self, data_type: Optional[str] = None):
-        raise NotImplementedError()
-
-    def _do_model_fit_for_training(self, data_type: str):
-        raise NotImplementedError()
-
-    @staticmethod
-    def _check_prediction(df: pd.DataFrame) -> pd.DataFrame:
-        if "id" in df.columns:
-            df = df.set_index("id")
-
-        return df
-
-    def _do_inference_for_validation(self, data_type: str) -> pd.Series:
-        valid_data = self.data_manager.get_data_helper_by_type(data_type=data_type, for_evaluation=False)
-        predictions = pd.DataFrame()  # TODO: Neutralize
-        if predictions.empty:
-            logging.warning(f"skip inference since the ensemble predictions are empty")
-            return self
-
-        valid_predictions = self._do_evaluation_on_tournament_target(
-            yhat=predictions[self.default_yhat_name], data_type=data_type)
-        return valid_predictions[self.default_yhat_pct_name]
-
-    def _do_inference_for_tournament(self, data_type: str) -> pd.Series:
-        logging.info(f"inference on {data_type}")
-        infer_data = self.data_manager.get_data_helper_by_type(data_type=data_type, for_evaluation=True)
-        X, y, groups = infer_data.data_
-
-        predictions = self._ensemble_predictions(
-            data_type, groupby_col=infer_data.group_name_).reindex(index=y.index).reset_index()
-        if predictions.empty:
-            logging.warning(f"skip inference since the ensemble predictions are empty")
-            return self
-
-        predictions = self._post_process_inference(yhat=predictions[self.default_yhat_name], data_type=data_type)
-        return predictions[self.default_yhat_pct_name]
-
+class AutoSolution(ISolution):
     def evaluate(self, train_data_type: str = "training", valid_data_type: str = "validation", ):
-        self._do_validation(data_type=valid_data_type)
-        return self
+        raise NotImplementedError()
 
     def run(self, train_data_type: str = "training", infer_data_type: str = "tournament", ):
-        self._do_inference(data_type=infer_data_type)
-        return self
-
-    def save_model(self):
-        raise NotImplementedError()
-
-    def load_model(self):
         raise NotImplementedError()
 
     @classmethod
     def from_configs(cls, args: Namespace, configs: "SolutionConfigs", output_data_path: str, **kwargs):
-        return cls(
-            args.refresh_level, configs.data_manager_, configs.ensemble_method, configs.model_dirs,
-            scoring_func=configs.scoring_func, working_dir=output_data_path, **kwargs)
+        if configs.model_gen_query.endswith("Ranker"):
+            logging.info(f"RankerSolution")
+            configs.data_manager_.configure_label_index_mapping()
+            return RankerSolution.from_configs(args=args, configs=configs, output_data_path=output_data_path)
+
+        if configs.model_gen_query.endswith("Classifier"):
+            logging.info(f"ClassifierSolution")
+            configs.data_manager_.configure_label_index_mapping()
+            return ClassifierSolution.from_configs(args=args, configs=configs, output_data_path=output_data_path)
+
+        return RegressorSolution.from_configs(args=args, configs=configs, output_data_path=output_data_path)
 
 
 if "__main__" == __name__:
-    import pdb
-
-    obj = Solution()
-    pdb.set_trace()
+    pass

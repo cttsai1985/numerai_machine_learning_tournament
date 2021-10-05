@@ -2,6 +2,7 @@ import sys
 import os
 import json
 import logging
+import numpy as np
 import pandas as pd
 from pathlib import Path
 from typing import Optional, Callable, Any, Dict, List, Tuple, Union
@@ -16,8 +17,7 @@ _EXAMPLE_PAIRS: List[Tuple[str]] = FilenameTemplate.numerai_example_filename_pai
 class DataManager:
     def __init__(
             self, working_dir: str = "./", data_mapping: Dict[str, str] = None, col_target: str = "target",
-            cols_group: Optional[List[str]] = None, cols_feature: Optional[List[str]] = None,
-            label2index: Optional[Dict[int, float]] = None, index2label: Optional[Dict[float, int]] = None, **kwargs):
+            cols_group: Optional[List[str]] = None, cols_feature: Optional[List[str]] = None, **kwargs):
         self.working_dir: str = working_dir if working_dir else "./"
 
         self.example_mapping: Dict[str, str] = dict(_EXAMPLE_PAIRS)
@@ -30,13 +30,24 @@ class DataManager:
             self.data_file_types = list(data_mapping.keys())
             self.data_file_names = list(data_mapping.values())
 
-        self.label2index: Optional[Dict[int, float]] = label2index
-        self.index2label: Optional[Dict[float, int]] = index2label
-
         self._check_status()
         self.col_target: str = col_target
         self.cols_group: Optional[List[str]] = cols_group if cols_group and isinstance(cols_group, list) else ["era"]
         self.cols_feature: Optional[List[str]] = cols_feature
+
+        self.label2index: Optional[Dict[int, float]] = None
+        self.index2label: Optional[Dict[float, int]] = None
+
+    def _create_label_index_mapping(self) -> Dict[int, float]:
+        sample_data = self.get_data_helper_by_type(data_type="training", for_evaluation=False)
+        y_ = sample_data.y_.unique()
+        y_.sort()
+        return {v: i for i, v in enumerate(y_)}
+
+    def configure_label_index_mapping(self):
+        self.label2index = self._create_label_index_mapping()
+        self.index2label = {v: k for k, v in self.label2index.items()}
+        return self
 
     @classmethod
     def from_configs(cls, configs: "SolutionConfigs", **kwargs):
@@ -44,8 +55,7 @@ class DataManager:
         # configs.load_feature_columns_from_json()
         return cls(
             working_dir=configs.input_data_dir, data_mapping=configs.data_mapping, col_target=configs.column_target,
-            cols_group=configs.columns_group, cols_feature=configs.columns_feature,
-            index2label=configs.index2label, label2index=configs.label2index, )
+            cols_group=configs.columns_group, cols_feature=configs.columns_feature, )
 
     def _check_status(self):
         logging.info(f"found {len(self.data_mapping)} data: in {self.data_mapping.keys()}")
@@ -68,10 +78,10 @@ class DataManager:
         return True
 
     def cast_target(self, y: pd.Series, cast_type: Optional[str] = None) -> pd.Series:
-        if cast_type is not None:
+        if cast_type is None:
             return y
 
-        index_mapping = getattr(self, "cast_type", None)
+        index_mapping = getattr(self, cast_type, None)
         if not index_mapping:
             return y
 
@@ -80,6 +90,18 @@ class DataManager:
             raise ValueError(f"mapping is not completed: {y.isna().sum()}")
 
         return y
+
+    def cast_target_proba(self, y: pd.Series, cast_type: Optional[str] = None) -> pd.Series:
+        if cast_type is None:
+            return y
+
+        index_mapping = getattr(self, cast_type, None)
+        if not index_mapping:
+            return y
+
+        yhat = pd.Series(np.dot(y, list(self.index2label.values)), index=y.index)
+        yhat.name = y.name
+        return yhat
 
     def get_example_data_by_type(self, data_type: str = "tournament") -> pd.DataFrame:
         if data_type not in self.example_mapping:

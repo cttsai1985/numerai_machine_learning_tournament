@@ -120,6 +120,14 @@ class DataHelper:
         return data.apply(lambda x: "_".join(x.astype("str")), axis=1).astype("category").rename(self.group_name_)
 
     @property
+    def group_counts_(self) -> List[int]:
+        groups = self.groups_
+        if groups.empty:
+            return list()
+
+        return groups.to_frame().groupby(self.group_name_).size().tolist()
+
+    @property
     def y_(self) -> pd.Series:
         data = self._read_data(columns=[self.col_target])
         return data.squeeze().astype("float")
