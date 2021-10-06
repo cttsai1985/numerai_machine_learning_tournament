@@ -19,31 +19,43 @@ numerai_example_filename_pairs: List[Tuple[str]] = [
     ("tournament", "example_predictions.parquet"),
 ]
 
-#
+# feature/target columns
 default_feature_collection_filename: str = "features_numerai.json"
 default_target_collection_filename: str = "targets.json"
 round_identifier_template: str = "numerai_tournament_round_{num_round:04d}"
 
-
 # feature evaluation
 feature_corr_filename_template: str = "numerai_{eval_type}_corr_{target}.parquet"
+
+# feature neutral feature
 feature_neutral_filename_template: str = "numerai_{eval_type}_feature_neutral.parquet"
 feature_neutral_tb_filename_template: str = "numerai_{eval_type}_feature_neutral_tb{tb_num:04d}.parquet"
 feature_neutral_target_filename_template: str = "numerai_{eval_type}_feature_neutral_{target}.parquet"
+
+# feature analysis
 feature_analysis_filename_template: str = "numerai_feature_analysis_{eval_type}_{target}.parquet"
 feature_analysis_tb_filename_template: str = "numerai_feature_analysis_{eval_type}_tb{tb_num:04d}_{target}.parquet"
+
+# evaluation y with features
 feature_exposure_filename_template: str = "{eval_type}_feature_exposure.parquet"
 feature_exposure_tb_filename_template: str = "{eval_type}_tb{tb_num:04d}_feature_exposure.parquet"
+
+# evaluation y with example predictions
 example_analytics_filename_template: str = "{eval_type}_example_analytics.parquet"
 example_analytics_tb_filename_template: str = "{eval_type}_tb{tb_num:04d}_example_analytics.parquet"
 
-# score file
+# score file split
 score_split_filename_template: str = "{eval_type}_score_split.parquet"
-score_all_filename_template: str = "{eval_type}_score_all.parquet"
 score_tb_split_filename_template: str = "{eval_type}_tb{tb_num:04d}_score_split.parquet"
-score_tb_all_filename_template: str = "{eval_type}_tb{tb_num:04d}_score_all.parquet"
+
+# score file split and target
 score_target_split_filename_template: str = "{eval_type}_score_split_{target}.parquet"
 score_target_all_filename_template: str = "{eval_type}_score_all_{target}.parquet"
+
+# score file all
+score_all_filename_template: str = "{eval_type}_score_all.parquet"
+score_tb_all_filename_template: str = "{eval_type}_tb{tb_num:04d}_score_all.parquet"
+
 
 # prediction files
 predictions_parquet_filename_template: str = "{eval_type}_predictions.parquet"
