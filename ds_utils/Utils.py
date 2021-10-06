@@ -17,6 +17,14 @@ def pct_ranked(series: Union[pd.Series, pd.DataFrame]) -> Union[pd.Series, pd.Da
     return series.rank(method="dense", ascending=True, pct=True)
 
 
+def select_series_from_tb_num(series: pd.Series, groups: pd.Series, tb_num: int) -> pd.Series:
+    data = pd.concat([series, groups], axis=1, sort=False)
+    series_name = series.name
+    samples = data.groupby(
+        groups)[series_name].apply(lambda x: pd.concat([x.nlargest(n=tb_num), x.nsmallest(n=tb_num)]))
+    return samples.reset_index(groups.name)[series_name]
+
+
 def get_file_hash(file_path: str, length: int = 8) -> str:
     return hashlib.md5(open(file_path, 'rb').read()).hexdigest()[:length]
 

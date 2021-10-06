@@ -15,6 +15,7 @@ from scipy import stats
 from sklearn.base import BaseEstimator
 
 from ds_utils import FilenameTemplate as ft
+from ds_utils import Utils
 from ds_utils.DefaultConfigs import RefreshLevel
 
 _EPSILON: float = sys.float_info.min
@@ -67,6 +68,150 @@ class MixinSolution(ISolution):
     def from_configs(cls, args: Namespace, configs: "SolutionConfigs", output_data_path: str, **kwargs):
         raise NotImplementedError()
 
+    def _do_evaluation_on_feature_neutralize(
+            self, yhat: pd.Series, data_type: str = "validation", tb_num: Optional[int] = None) -> pd.Series:
+        """
+
+        :param yhat:
+        :param data_type:
+        :return:
+        """
+        feature_neutral_filepath = os.path.join(
+            self.working_dir, ft.feature_neutral_filename_template.format(eval_type=data_type))
+        if tb_num:
+            logging.info(f"evaluation on feature neutralize: data_type={data_type}, tb_num={tb_num:04d}")
+            feature_neutral_filepath = os.path.join(
+                self.working_dir, ft.feature_neutral_tb_filename_template.format(eval_type=data_type, tb_num=tb_num))
+        else:
+            logging.info(f"evaluation on feature neutralize: data_type={data_type}")
+
+        # feature exposure
+        valid_data = self.data_manager.get_data_helper_by_type(data_type=data_type, for_evaluation=True)
+        feature_neutralize = valid_data.evaluate_with_feature_neutralize(
+            yhat, cols_feature=None, proportion=1., normalize=True)
+        feature_neutralize.to_frame("featureNeutralCorr").to_parquet(feature_neutral_filepath)
+        return feature_neutralize
+
+    def _do_evaluation_on_example_prediction(
+            self, yhat: pd.Series, data_type: str = "validation", tb_num: Optional[int] = None) -> pd.DataFrame:
+        """
+        Example Analytics such as Corr with Example Predictions and Meta Model Control
+        :param yhat:
+        :param data_type:
+        :return:
+        """
+        example_predictions = self.data_manager.get_example_data_by_type(data_type=data_type).squeeze()
+        if example_predictions.empty:
+            return pd.DataFrame()
+
+        example_analytics_filepath = os.path.join(
+            self.working_dir, ft.example_analytics_filename_template.format(eval_type=data_type))
+        if not tb_num:
+            logging.info(f"evaluation on tournament example: data_type={data_type}")
+        else:
+            logging.info(f"evaluation on tournament example: data_type={data_type}, tb_num={tb_num:04d}")
+            example_analytics_filepath = os.path.join(
+                self.working_dir, ft.example_analytics_tb_filename_template.format(eval_type=data_type, tb_num=tb_num))
+
+        # corr with y example
+        valid_data = self.data_manager.get_data_helper_by_type(data_type=data_type, for_evaluation=True)
+        example_analytics = valid_data.evaluate_with_y_and_example(yhat=yhat, example_yhat=example_predictions)
+        example_analytics.to_parquet(example_analytics_filepath)
+        return example_analytics
+
+    def _do_evaluation_on_learning_target(self, yhat: pd.Series, data_type: str = "validation") -> pd.Series:
+        """
+
+        :param yhat:
+        :param data_type:
+        :return:
+        """
+        logging.info(f"evaluation on learning target: data_type={data_type}")
+        valid_data = self.data_manager.get_data_helper_by_type(data_type=data_type, for_evaluation=False)
+        results = valid_data.evaluate_with_y(yhat=yhat, scoring_func=self.scoring_func)
+        y_name_ = valid_data.y_name_
+
+        score_target_all_filepath = os.path.join(
+            self.working_dir, ft.score_target_all_filename_template.format(eval_type=data_type, target=y_name_))
+        score_target_split_filepath = os.path.join(
+            self.working_dir, ft.score_target_split_filename_template.format(eval_type=data_type, target=y_name_))
+
+        score_all = results[1]
+        score_all.to_parquet(score_target_all_filepath)
+
+        score_split = results[2]
+        score_split.to_parquet(score_target_split_filepath)
+
+        predictions = results[0]
+        return predictions
+
+    def _do_evaluation_on_tournament_target(
+            self, yhat: pd.Series, data_type: str = "validation", tb_num: Optional[int] = None) -> pd.Series:
+        """
+
+        :param yhat:
+        :param data_type:
+        :return:
+        """
+        valid_data = self.data_manager.get_data_helper_by_type(data_type=data_type, for_evaluation=True)
+
+        predictions_parquet_filepath = os.path.join(
+            self.working_dir, ft.predictions_parquet_filename_template.format(eval_type=data_type))
+        if tb_num:
+            logging.info(f"evaluation on tournament target: data_type={data_type}, tb_num={tb_num:04d}")
+            feature_exposure_filepath = os.path.join(
+                self.working_dir, ft.feature_exposure_tb_filename_template.format(eval_type=data_type, tb_num=tb_num))
+            score_target_all_filepath = os.path.join(
+                self.working_dir, ft.score_tb_all_filename_template.format(eval_type=data_type, tb_num=tb_num))
+            score_target_split_filepath = os.path.join(
+                self.working_dir, ft.score_tb_split_filename_template.format(eval_type=data_type, tb_num=tb_num))
+        else:
+            logging.info(f"evaluation on tournament target: data_type={data_type}")
+            feature_exposure_filepath = os.path.join(
+                self.working_dir, ft.feature_exposure_filename_template.format(eval_type=data_type))
+            score_target_all_filepath = os.path.join(
+                self.working_dir, ft.score_all_filename_template.format(eval_type=data_type))
+            score_target_split_filepath = os.path.join(
+                self.working_dir, ft.score_split_filename_template.format(eval_type=data_type))
+
+        # feature exposure
+        valid_data.evaluate_with_feature(yhat).to_parquet(feature_exposure_filepath)
+
+        # performance evaluation for prediction results
+        results = valid_data.evaluate_with_y(yhat=yhat, scoring_func=self.scoring_func)
+
+        score_all = results[1]
+        score_all.to_parquet(score_target_all_filepath)
+
+        score_split = results[2]
+        score_split.to_parquet(score_target_split_filepath)
+
+        predictions = results[0]
+        if tb_num:
+            return predictions
+
+        predictions[self.default_yhat_pct_name] = valid_data.pct_rank_normalize(predictions[self.default_yhat_name])
+        predictions.to_parquet(predictions_parquet_filepath)
+        return predictions
+
+    def _post_process_tournament(self, yhat: pd.Series, data_type: str = "tournament") -> pd.Series:
+        """
+        
+        :param yhat:
+        :param data_type:
+        :return:
+        """
+        infer_data = self.data_manager.get_data_helper_by_type(data_type=data_type, for_evaluation=True)
+        predictions_parquet_filepath = os.path.join(
+            self.working_dir, ft.predictions_parquet_filename_template.format(eval_type=data_type))
+
+        predictions = yhat.to_frame()
+        predictions[self.default_yhat_pct_name] = infer_data.pct_rank_normalize(predictions[yhat.name])
+        predictions[infer_data.group_name_] = infer_data.groups_
+
+        predictions.to_parquet(predictions_parquet_filepath)
+        return predictions
+
     def _create_submission_file(self, yhat: pd.Series, data_type: str = "validation") -> pd.Series:
         """
 
@@ -79,119 +224,6 @@ class MixinSolution(ISolution):
         yhat.index.name = predictions.index.name
         yhat.reindex(index=predictions.index).rename(predictions.name).to_csv(filepath)
         return yhat
-
-    def _do_evaluation_on_learning_target(self, yhat: pd.Series, data_type: str = "validation") -> pd.Series:
-        """
-
-        :param yhat:
-        :param data_type:
-        :return:
-        """
-        logging.info(f"evaluation on learning target: data_type={data_type}")
-        valid_data = self.data_manager.get_data_helper_by_type(data_type=data_type, for_evaluation=False)
-        results = valid_data.evaluate_with_y(yhat=yhat, scoring_func=self.scoring_func)
-
-        score_all = results[1]
-        score_all.to_parquet(
-            os.path.join(self.working_dir, ft.score_target_all_filename_template.format(
-                eval_type=data_type, target=valid_data.y_name_)))
-
-        score_split = results[2]
-        score_split.to_parquet(
-            os.path.join(self.working_dir, ft.score_target_split_filename_template.format(
-                eval_type=data_type, target=valid_data.y_name_)))
-
-        predictions = results[0]
-        return predictions
-
-    def _do_evaluation_on_tournament_target(self, yhat: pd.Series, data_type: str = "validation") -> pd.Series:
-        """
-
-        :param yhat:
-        :param data_type:
-        :return:
-        """
-        logging.info(f"evaluation on tournament target: data_type={data_type}")
-        valid_data = self.data_manager.get_data_helper_by_type(data_type=data_type, for_evaluation=True)
-
-        # feature exposure
-        feature_evaluation = valid_data.evaluate_with_feature(yhat)
-        feature_evaluation.to_parquet(
-            os.path.join(self.working_dir, ft.feature_exposure_filename_template.format(eval_type=data_type)))
-
-        # performance evaluation for prediction results
-        results = valid_data.evaluate_with_y(yhat=yhat, scoring_func=self.scoring_func)
-
-        score_all = results[1]
-        score_all.to_parquet(
-            os.path.join(self.working_dir, ft.score_all_filename_template.format(
-                eval_type=data_type, target=valid_data.y_name_)))
-
-        score_split = results[2]
-        score_split.to_parquet(
-            os.path.join(self.working_dir, ft.score_split_filename_template.format(
-                eval_type=data_type, target=valid_data.y_name_)))
-
-        predictions = results[0]
-        predictions[self.default_yhat_pct_name] = valid_data.pct_rank_normalize(predictions[self.default_yhat_name])
-        predictions.to_parquet(
-            os.path.join(self.working_dir, ft.predictions_parquet_filename_template.format(eval_type=data_type)))
-        return predictions
-
-    def _do_evaluation_on_example_prediction(self, yhat: pd.Series, data_type: str = "validation") -> pd.DataFrame:
-        """
-        Example Analytics such as Corr with Example Predictions and Meta Model Control
-        :param yhat:
-        :param data_type:
-        :return:
-        """
-        logging.info(f"evaluation on tournament example: data_type={data_type}")
-        valid_data = self.data_manager.get_data_helper_by_type(data_type=data_type, for_evaluation=True)
-
-        # corr with y example
-        example_predictions = self.data_manager.get_example_data_by_type(data_type=data_type).squeeze()
-        if not example_predictions.empty:
-            example_analytics = valid_data.evaluate_with_y_and_example(yhat=yhat, example_yhat=example_predictions)
-            example_analytics.to_parquet(
-                os.path.join(self.working_dir, ft.example_analytics_filename_template.format(eval_type=data_type)))
-            return example_analytics
-
-        return pd.DataFrame()
-
-    def _do_evaluation_on_feature_neutralize(self, yhat: pd.Series, data_type: str = "validation") -> pd.Series:
-        """
-
-        :param yhat:
-        :param data_type:
-        :return:
-        """
-        logging.info(f"evaluation on feature neutralize: data_type={data_type}")
-        valid_data = self.data_manager.get_data_helper_by_type(data_type=data_type, for_evaluation=True)
-
-        # feature exposure
-        feature_neutralize = valid_data.evaluate_with_feature_neutralize(
-            yhat, cols_feature=None, proportion=1., normalize=True)
-        feature_neutralize.to_frame("featureNeutralCorr").to_parquet(
-            os.path.join(self.working_dir, ft.example_corr_filename_template.format(eval_type=data_type)))
-
-        return feature_neutralize
-
-    def _post_process_tournament(self, yhat: pd.Series, data_type: str = "tournament") -> pd.Series:
-        """
-        
-        :param yhat:
-        :param data_type:
-        :return:
-        """
-        infer_data = self.data_manager.get_data_helper_by_type(data_type=data_type, for_evaluation=True)
-        predictions = yhat.to_frame()
-        predictions[self.default_yhat_pct_name] = infer_data.pct_rank_normalize(predictions[yhat.name])
-        predictions[infer_data.group_name_] = infer_data.groups_
-
-        predictions.to_parquet(
-            os.path.join(self.working_dir, ft.predictions_parquet_filename_template.format(eval_type=data_type)))
-        return predictions
-        raise NotImplementedError()
 
     def _do_cross_val(self, data_type: Optional[str] = None):
         raise NotImplementedError()
@@ -215,7 +247,25 @@ class MixinSolution(ISolution):
             return self
 
         yhat = self._do_inference_for_validation(data_type=data_type)
-        self._create_submission_file(yhat, data_type=data_type)
+
+        predictions = self._do_evaluation_on_tournament_target(yhat=yhat, data_type=data_type)
+        self._create_submission_file(predictions[self.default_yhat_pct_name], data_type=data_type)
+
+        # _ = self._do_evaluation_on_feature_neutralize(yhat=yhat, data_type=data_type)
+        _ = self._do_evaluation_on_example_prediction(yhat=yhat, data_type=data_type)
+        # target for learning
+        if self.data_manager.col_target != "target":
+            _ = self._do_evaluation_on_learning_target(yhat=yhat, data_type=data_type)
+
+        # get top and bottom predictions
+        valid_data = self.data_manager.get_data_helper_by_type(data_type=data_type, for_evaluation=True)
+        tb_num = 200
+        groups = valid_data.groups_
+        yhat_tb = Utils.select_series_from_tb_num(yhat, groups=groups, tb_num=tb_num)
+
+        _ = self._do_evaluation_on_example_prediction(yhat=yhat_tb, data_type=data_type, tb_num=tb_num)
+        _ = self._do_evaluation_on_tournament_target(yhat=yhat_tb, data_type=data_type, tb_num=tb_num)
+        _ = self._do_evaluation_on_feature_neutralize(yhat=yhat_tb, data_type=data_type, tb_num=tb_num)
         return self
 
     def _do_inference_for_tournament(self, data_type: str) -> pd.Series:
@@ -228,7 +278,8 @@ class MixinSolution(ISolution):
             return self
 
         yhat = self._do_inference_for_tournament(data_type=data_type)
-        self._create_submission_file(yhat, data_type=data_type)
+        predictions = self._post_process_tournament(yhat=yhat, data_type=data_type)
+        self._create_submission_file(predictions[self.default_yhat_pct_name], data_type=data_type)
         return self
 
 
@@ -356,16 +407,7 @@ class RegressorSolution(ScikitEstimatorSolution):
         logging.info(f"inference for validation: {data_type}")
         valid_data = self.data_manager.get_data_helper_by_type(data_type=data_type, for_evaluation=False)
         X, y, groups = valid_data.data_
-        yhat = pd.Series(self.model.predict(X), index=y.index, name=self.default_yhat_name)
-
-        # target for learning
-        if valid_data.y_name_ != "target":
-            _ = self._do_evaluation_on_learning_target(yhat=yhat, data_type=data_type)
-
-        # _ = self._do_evaluation_on_feature_neutralize(yhat=yhat, data_type=data_type)
-        _ = self._do_evaluation_on_example_prediction(yhat=yhat, data_type=data_type)
-        valid_predictions = self._do_evaluation_on_tournament_target(yhat=yhat, data_type=data_type)
-        return valid_predictions[self.default_yhat_pct_name]
+        return pd.Series(self.model.predict(X), index=y.index, name=self.default_yhat_name)
 
     def _do_inference_for_tournament(self, data_type: str) -> pd.Series:
         logging.info(f"inference for tournament: {data_type}")
@@ -374,8 +416,7 @@ class RegressorSolution(ScikitEstimatorSolution):
 
         predictions = y.to_frame()
         predictions[self.default_yhat_name] = self.model.predict(X)
-        predictions = self._post_process_tournament(yhat=predictions[self.default_yhat_name], data_type=data_type)
-        return predictions[self.default_yhat_pct_name]
+        return predictions[self.default_yhat_name]
 
 
 class RankerSolution(ScikitEstimatorSolution):
@@ -414,16 +455,7 @@ class RankerSolution(ScikitEstimatorSolution):
     def _do_inference_for_validation(self, data_type: str) -> pd.Series:
         logging.info(f"inference for validation: {data_type}")
         valid_data = self.data_manager.get_data_helper_by_type(data_type=data_type, for_evaluation=False)
-        yhat = self.inference_on_group(infer_data=valid_data)
-
-        # target for learning
-        if valid_data.y_name_ != "target":
-            _ = self._do_evaluation_on_learning_target(yhat=yhat, data_type=data_type)
-
-        # _ = self._do_evaluation_on_feature_neutralize(yhat=yhat, data_type=data_type)
-        _ = self._do_evaluation_on_example_prediction(yhat=yhat, data_type=data_type)
-        valid_predictions = self._do_evaluation_on_tournament_target(yhat=yhat, data_type=data_type)
-        return valid_predictions[self.default_yhat_pct_name]
+        return self.inference_on_group(infer_data=valid_data)
 
     def _do_inference_for_tournament(self, data_type: str) -> pd.Series:
         logging.info(f"inference for tournament: {data_type}")
@@ -431,8 +463,7 @@ class RankerSolution(ScikitEstimatorSolution):
 
         predictions = infer_data.y_.to_frame()
         predictions[self.default_yhat_name] = self.inference_on_group(infer_data=infer_data)
-        predictions = self._post_process_tournament(yhat=predictions[self.default_yhat_name], data_type=data_type)
-        return predictions[self.default_yhat_pct_name]
+        return predictions[self.default_yhat_name]
 
 
 class CatBoostRankerSolution(RankerSolution):
@@ -448,7 +479,6 @@ class CatBoostRankerSolution(RankerSolution):
         self.is_fitted = True
         self._save_model()
         return self
-
 
 
 class ClassifierSolution(ScikitEstimatorSolution):
@@ -483,17 +513,8 @@ class ClassifierSolution(ScikitEstimatorSolution):
 
         yhat = self.model.predict_proba(X)
         # yhat = self._cast_for_classifier_predict(pd.Series(yhat, index=y.index, name=self.default_yhat_name))
-        yhat = pd.Series(
+        return pd.Series(
             self._cast_for_classifier_predict_proba(yhat), index=y.index, name=self.default_yhat_name)
-
-        # target for learning
-        if valid_data.y_name_ != "target":
-            _ = self._do_evaluation_on_learning_target(yhat=yhat, data_type=data_type)
-
-        # _ = self._do_evaluation_on_feature_neutralize(yhat=yhat, data_type=data_type)
-        _ = self._do_evaluation_on_example_prediction(yhat=yhat, data_type=data_type)
-        valid_predictions = self._do_evaluation_on_tournament_target(yhat=yhat, data_type=data_type)
-        return valid_predictions[self.default_yhat_pct_name]
 
     def _do_inference_for_tournament(self, data_type: str) -> pd.Series:
         logging.info(f"inference for tournament: {data_type}")
@@ -504,8 +525,7 @@ class ClassifierSolution(ScikitEstimatorSolution):
         # predictions[self.default_yhat_name] = self.model.predict(X)
         # predictions[self.default_yhat_name] = self._cast_for_classifier_predict(predictions[self.default_yhat_name])
         predictions[self.default_yhat_name] = self._cast_for_classifier_predict_proba(self.model.predict_proba(X))
-        predictions = self._post_process_tournament(yhat=predictions[self.default_yhat_name], data_type=data_type)
-        return predictions[self.default_yhat_pct_name]
+        return predictions[self.default_yhat_name]
 
 
 class EnsembleSolution(MixinSolution):
@@ -572,25 +592,19 @@ class EnsembleSolution(MixinSolution):
         logging.info(f"correlation intra predictions:\n{df.groupby(groupby_col).corr(method='spearman')}")
         return ret.reindex(index=y.index)
 
-    def _do_inference_for_validation(self, data_type: str) -> pd.Series:
+    def _do_inference(self, data_type: str) -> pd.Series:
         predictions = self._ensemble_predictions(data_type)
         if predictions.empty:
             logging.warning(f"skip inference since the ensemble predictions are empty")
             return self
 
-        yhat = predictions[self.default_yhat_name]
-        _ = self._do_evaluation_on_example_prediction(yhat=yhat, data_type=data_type)
-        predictions = self._do_evaluation_on_tournament_target(yhat=yhat, data_type=data_type)
-        return predictions[self.default_yhat_pct_name]
+        return predictions[self.default_yhat_name]
+
+    def _do_inference_for_validation(self, data_type: str) -> pd.Series:
+        return self._do_inference(data_type=data_type)
 
     def _do_inference_for_tournament(self, data_type: str) -> pd.Series:
-        predictions = self._ensemble_predictions(data_type)
-        if predictions.empty:
-            logging.warning(f"skip inference since the ensemble predictions are empty")
-            return self
-
-        predictions = self._post_process_tournament(yhat=predictions[self.default_yhat_name], data_type=data_type)
-        return predictions[self.default_yhat_pct_name]
+        return self._do_inference(data_type=data_type)
 
     def evaluate(self, train_data_type: str = "training", valid_data_type: str = "validation", ):
         self._do_validation(data_type=valid_data_type)

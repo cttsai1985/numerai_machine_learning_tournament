@@ -181,7 +181,7 @@ def parse_commandline() -> argparse.Namespace:
 def compute(
         root_data_path: str, root_prediction_path: str, eval_data_type: str = "validation",
         columns_corr: Optional[List[str]] = None, column_group: str = "era", column_example: str = "example_prediction",
-        column_prediction: str = "prediction", column_target: str = "target",
+        column_prediction: str = "prediction", column_target: str = "target", tb_num: Optional[int] = None,
         allow_func_list: Optional[List[str]] = None, **kwargs) -> pd.DataFrame:
     if eval_data_type not in ["training", "validation"]:
         logging.info(f"eval_data_type is not allowed: {eval_data_type}")
@@ -198,6 +198,17 @@ def compute(
         root_prediction_path, ft.example_analytics_filename_template.format(eval_type=result_type))
 
     output_file_path: str = os.path.join(root_prediction_path, ft.model_diagnostics_filename_template)
+    if tb_num:
+        score_split_file_path: str = os.path.join(
+            root_prediction_path, ft.score_tb_split_filename_template.format(eval_type=result_type, tb_num=tb_num))
+        feature_exposure_file_path: str = os.path.join(
+            root_prediction_path,
+            ft.feature_exposure_tb_filename_template.format(eval_type=result_type, tb_num=tb_num))
+        example_analytics_file_path: str = os.path.join(
+            root_prediction_path,
+            ft.example_analytics_tb_filename_template.format(eval_type=result_type, tb_num=tb_num))
+
+        output_file_path: str = os.path.join(root_prediction_path, ft.model_diagnostics_filename_template)
 
     file_paths: List[str] = [
         score_split_file_path, feature_exposure_file_path, example_analytics_file_path,
@@ -255,8 +266,13 @@ def compute(
     summary.index.name = "attr"
     summary.columns = ["score"]
     logging.info(f"stats on {eval_data_type}:\n{summary.round(4)}")
-    summary.to_csv(output_file_path.format(eval_type=result_type, filename_extension="csv"), )
-    summary.to_parquet(output_file_path.format(eval_type=result_type, filename_extension="parquet"), )
+    if not tb_num:
+        summary.to_csv(output_file_path.format(eval_type=result_type, filename_extension="csv"), )
+        summary.to_parquet(output_file_path.format(eval_type=result_type, filename_extension="parquet"), )
+    else:
+        summary.to_csv(output_file_path.format(eval_type=result_type, filename_extension="csv", tb_num=tb_num), )
+        summary.to_parquet(
+            output_file_path.format(eval_type=result_type, filename_extension="parquet", tb_num=tb_num), )
     # TODO: add select era
     return summary
 
@@ -304,9 +320,13 @@ if "__main__" == __name__:
         root_data_path=_root_data_path, root_prediction_path=configs.output_dir_, eval_data_type="validation",
         columns_corr=_columns_corr, column_group="era", column_example="example_prediction",
         column_prediction="prediction", column_target=_column_target, allow_func_list=_allow_func_list)
+    validation_tb_summary = compute(
+        root_data_path=_root_data_path, root_prediction_path=configs.output_dir_, eval_data_type="validation",
+        columns_corr=_columns_corr, column_group="era", column_example="example_prediction", tb_num=200,
+        column_prediction="prediction", column_target=_column_target, allow_func_list=_allow_func_list)
 
-    if not (cross_val_summary.empty or validation_summary.empty):
-        diff_summary = (validation_summary - cross_val_summary).dropna().reindex(index=cross_val_summary.index)
+    if not (validation_tb_summary.empty or validation_summary.empty):
+        diff_summary = (validation_tb_summary - validation_summary).dropna().reindex(index=validation_summary.index)
         _output_file_path: str = os.path.join(
             configs.output_dir_, "_".join(["diff", "model", "diagnostics.{filename_extension}"]))
         diff_summary.to_csv(_output_file_path.format(filename_extension="csv"), )

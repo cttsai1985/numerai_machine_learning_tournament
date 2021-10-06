@@ -248,7 +248,7 @@ class EvaluationDataHelper(DataHelper):
 
         # all score
         score_all: pd.DataFrame = scoring_func(
-            y, predictions[col_yhat], scoring_type=scoring_type).to_frame("evaluationMean")
+            predictions[y_name], predictions[col_yhat], scoring_type=scoring_type).to_frame("evaluationMean")
         score_all["sharpeByEra"] = DiagnosticUtils.sharpe_ratio(score_split)
         score_all["meanByEra"] = score_split.mean()
         score_all["stdByEra"] = score_split.std()
