@@ -435,6 +435,22 @@ class RankerSolution(ScikitEstimatorSolution):
         return predictions[self.default_yhat_pct_name]
 
 
+class CatBoostRankerSolution(RankerSolution):
+    def _do_model_fit(self, data_type: Optional[str] = None):
+        if self.is_fitted:
+            return self
+
+        train_data = self.data_manager.get_data_helper_by_type(data_type=data_type)
+        X, y, groups = train_data.data_
+
+        logging.info(f"training model...")
+        self.model.fit(X, y, group_id=groups, **self.fit_params)  # TODO: add fit_params:
+        self.is_fitted = True
+        self._save_model()
+        return self
+
+
+
 class ClassifierSolution(ScikitEstimatorSolution):
     def __init__(
             self, refresh_level: RefreshLevel, data_manager: "DataManager", model: BaseEstimator,
@@ -601,6 +617,11 @@ class AutoSolution(ISolution):
 
     @classmethod
     def from_configs(cls, args: Namespace, configs: "SolutionConfigs", output_data_path: str, **kwargs):
+        if configs.model_gen_query == "CatBoostRanker":
+            logging.info(f"RankerSolution")
+            configs.data_manager_.configure_label_index_mapping()
+            return CatBoostRankerSolution.from_configs(args=args, configs=configs, output_data_path=output_data_path)
+
         if configs.model_gen_query.endswith("Ranker"):
             logging.info(f"RankerSolution")
             configs.data_manager_.configure_label_index_mapping()

@@ -56,6 +56,7 @@ _available_model_gen: Dict[str, Callable] = dict([
     ("XGBRanker", xgb.XGBRanker),
     ("CatBoostClassifier", catb.CatBoostClassifier),
     ("CatBoostRegressor", catb.CatBoostRegressor),
+    ("CatBoostRanker", catb.CatBoostRanker),
 ])
 
 _available_objective_func: Dict[str, Callable] = dict([
