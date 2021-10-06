@@ -168,7 +168,9 @@ class EvaluationDataHelper(DataHelper):
         groups = self.groups_
         groups_name = groups.name
 
-        data = pd.concat([self.X_, yhat.rename(col_yhat), groups], axis=1)
+        data: pd.DataFrame = pd.concat([self.X_, yhat.rename(col_yhat), groups], axis=1)
+        data.dropna(inplace=True)
+
         predictions = yhat.to_frame()
         predictions[col_neutral] = data.groupby(groups_name).apply(
             lambda x: DiagnosticUtils.compute_neutralize(
@@ -188,6 +190,8 @@ class EvaluationDataHelper(DataHelper):
             method = Metrics.pearson_corr
 
         data: pd.DataFrame = pd.concat([features, yhat, groups], axis=1)
+        data.dropna(inplace=True)
+
         results = data.groupby(groups.name).apply(lambda x: DiagnosticUtils.feature_exposure(
             x, columns_feature=cols_feature, column_target=yhat.name, method=method))
         # results.columns.name = ""
@@ -209,6 +213,7 @@ class EvaluationDataHelper(DataHelper):
         predictions: pd.DataFrame = pd.concat(
             [y, yhat.rename(col_yhat), example_yhat.rename(column_example), groups], axis=1)
         predictions.dropna(inplace=True)
+
         gpdf_predictions = predictions.groupby(groups_name)
         example_corr = gpdf_predictions.apply(
             lambda x: x[column_example].corr(other=x[col_yhat], method=method)).rename("examplePredsCorr")
@@ -233,6 +238,8 @@ class EvaluationDataHelper(DataHelper):
         logging.info(f"evaluate_with_y: {y.name} ({y.shape})")
 
         predictions: pd.DataFrame = pd.concat([y, yhat.rename(col_yhat), groups], axis=1)
+        predictions.dropna(inplace=True)
+
         gpdf_predictions = predictions.groupby(groups_name)
 
         score_split: pd.DataFrame = gpdf_predictions.apply(
