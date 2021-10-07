@@ -208,7 +208,7 @@ def compute(
             root_prediction_path,
             ft.example_analytics_tb_filename_template.format(eval_type=result_type, tb_num=tb_num))
 
-        output_file_path: str = os.path.join(root_prediction_path, ft.model_diagnostics_filename_template)
+        output_file_path: str = os.path.join(root_prediction_path, ft.model_diagnostics_tb_filename_template)
 
     file_paths: List[str] = [
         score_split_file_path, feature_exposure_file_path, example_analytics_file_path,
