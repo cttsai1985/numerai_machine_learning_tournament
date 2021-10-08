@@ -47,12 +47,12 @@ def compute_corr_stats(df_corr: pd.DataFrame, output_feature_analysis_filepath: 
     if refresh or (not (os.path.exists(
             output_feature_analysis_filepath) and os.path.isfile(output_feature_analysis_filepath))):
         df = pd.concat([
-            df_corr.mean().rename("mean"),
-            df_corr.std().rename("std"),
-            df_corr.median().rename("median"),
-            DiagnosticUtils.sharpe_ratio(df_corr).rename("sharpe"),
-            DiagnosticUtils.smart_sharpe(df_corr).rename("smart sharpe"),
-            DiagnosticUtils.smart_sortino_ratio(df_corr).rename("smart sortino ratio")], axis=1, sort=False)
+            df_corr.mean().rename("corrMean"),
+            df_corr.std().rename("corrStd"),
+            df_corr.median().rename("corrMedian"),
+            DiagnosticUtils.sharpe_ratio(df_corr).rename("corrSharpe"),
+            DiagnosticUtils.smart_sharpe(df_corr).rename("corrSmartSharpe"),
+            DiagnosticUtils.smart_sortino_ratio(df_corr).rename("corrSmartSortinoRatio")], axis=1, sort=False)
         df.to_parquet(output_feature_analysis_filepath)
     else:
         df = pd.read_parquet(output_feature_analysis_filepath)
@@ -94,7 +94,7 @@ if "__main__" == __name__:
 
     _args = parse_commandline()
     configs = SolutionConfigs(root_resource_path=ft.root_resource_path, configs_file_path=_args.configs)
-    validation_summary = compute(
+    _ = compute(
         root_data_path=ft.default_data_dir, eval_data_type="validation", column_group="era",
         column_target=configs.column_target, refresh=_args.refresh)
     _ = compute(
