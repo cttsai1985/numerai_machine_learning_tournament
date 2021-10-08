@@ -187,6 +187,7 @@ def compute(
         logging.info(f"eval_data_type is not allowed: {eval_data_type}")
         return pd.DataFrame()
 
+    logging.info(f"eval_data_type: {eval_data_type}, with tb_num: {tb_num}")
     result_type = {"training": "cross_val", "validation": "validation"}.get(eval_data_type)
 
     # produced files
