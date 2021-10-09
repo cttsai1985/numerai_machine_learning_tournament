@@ -54,6 +54,9 @@ _available_model_gen: Dict[str, Callable] = dict([
     ("XGBRegressor", xgb.XGBRegressor),
     ("XGBMClassifier", xgb.XGBClassifier),
     ("XGBRanker", xgb.XGBRanker),
+    ("DaskXGBRegressor", xgb.dask.DaskXGBRegressor),
+    ("DaskXGBMClassifier", xgb.dask.DaskXGBClassifier),
+    ("DaskXGBRanker", xgb.dask.DaskXGBRanker),
     ("CatBoostClassifier", catb.CatBoostClassifier),
     ("CatBoostRegressor", catb.CatBoostRegressor),
     ("CatBoostRanker", catb.CatBoostRanker),
@@ -362,15 +365,21 @@ class NeutralizeSolutionConfigs(BaseSolutionConfigs):
         self.neutralize_model_configs: Optional[SolutionConfigs] = None
         self.model_dir: Optional[str] = None
 
-        self.neutralizers: Optional[List[str]] = None
-        self.proportion: float = 1.
-        self.normalize: bool = True
+        self.metric: str = "corrSmartSharpe"
+        self.pipeline_configs: Optional[List[Tuple[Any]]] = None
+        self.quantiles: Optional[List[float]] = None
+        self.proportion_mapping: Optional[Dict[str, float]] = None
 
         super().__init__(
             root_resource_path=root_resource_path, configs_file_path=configs_file_path, eval_data_type=eval_data_type)
 
         self._configure_solution_from_yaml()
         # self._save_yaml_configs()
+        if not self.quantiles:
+            self.quantiles: List[float] = [.0, .25, .5, .75, 1.]
+
+        if not self.proportion_mapping:
+            self.proportion_mapping: Dict[str, float] = {0: .25, 1: .5, 2: .75, 3: 1.}
 
     def _configure_solution_from_yaml(self, ):
         _config_filepath: str = self.neutralize_model_configs
