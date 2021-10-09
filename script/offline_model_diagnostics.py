@@ -43,30 +43,6 @@ def _target_dataframe(
     return df_target.join(example["prediction"].rename("example_prediction"), how="left")
 
 
-def compute_feature_neutral_mean(
-        prediction_filepath: str, feature_filepath: str, feature_columns_filepath: str,
-        columns: Optional[List[str]] = None, column_group: str = "era", column_prediction: str = "prediction",
-        column_target: str = "target", proportion: float = 1., normalize: bool = True) -> pd.Series:
-    # TODO: remove this later
-    df = _read_dataframe(feature_filepath)
-    df_target = _read_dataframe(prediction_filepath)
-    df[column_prediction] = df_target[column_prediction]
-    with open(feature_columns_filepath, "r") as fp:
-        columns_feature = json.load(fp)
-
-    df["neutral_sub"] = df.groupby(column_group).apply(
-        lambda x: DiagnosticUtils.compute_neutralize(
-            x, target_columns=[column_prediction], neutralizers=columns_feature, proportion=proportion,
-            normalize=normalize))
-
-    results = dict()
-    groupby_df = df.groupby(column_group)
-    for method in columns:
-        results[method] = groupby_df.apply(lambda x: Utils.scale_uniform(x["neutral_sub"]).corr(
-            other=(x[column_target]), method=method.lower()))
-    return pd.DataFrame(results).mean().rename("feature neutralized corr mean")
-
-
 def compute_sharpe(filepath: str, columns: Optional[List[str]] = None, ) -> pd.Series:
     df_corr = _read_dataframe(filepath, columns=columns)
     return DiagnosticUtils.sharpe_ratio(df_corr).rename("corrSharpe")

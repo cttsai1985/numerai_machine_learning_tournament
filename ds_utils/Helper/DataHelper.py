@@ -176,7 +176,7 @@ class EvaluationDataHelper(DataHelper):
         predictions = yhat.to_frame()
         predictions[col_neutral] = data.groupby(self.group_name_).apply(
             lambda x: DiagnosticUtils.compute_neutralize(
-                x, target_columns=[col_yhat], neutralizers=cols_feature, proportion=proportion, normalize=normalize))
+                exposures=x[cols_feature], scores=x[[col_yhat]], proportion=proportion, normalize=normalize))
         return predictions[col_neutral].rename(col_yhat)
 
     def evaluate_with_feature(
