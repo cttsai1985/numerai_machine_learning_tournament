@@ -39,6 +39,10 @@ class INeutralizationHelper:
     def neutralize(self, exposures: pd.DataFrame, scores: pd.Series, **kwargs) -> pd.Series:
         raise NotImplementedError()
 
+    @property
+    def has_feature_groups_(self) -> bool:
+        raise NotImplementedError()
+
 
 class MixinNeutralizationHelper(INeutralizationHelper):
     def __init__(
@@ -47,6 +51,13 @@ class MixinNeutralizationHelper(INeutralizationHelper):
         self.feature_groups: Optional[List[str]] = feature_groups
         self.proportion: float = proportion
         self.score_func: Optional[Callable] = score_func
+
+    @property
+    def has_feature_groups_(self) -> bool:
+        if self.feature_groups:
+            return True
+
+        return False
 
     def _neutralize(self, exposures: pd.DataFrame, scores: pd.Series, **kwargs) -> pd.Series:
         raise NotImplementedError()
@@ -70,7 +81,7 @@ class MixinNeutralizationHelper(INeutralizationHelper):
         exposures = exposures.reindex(columns=feature_groups)
         neutralized_series = self._neutralize(exposures=exposures, scores=scores)
         scores = scores - self.proportion * neutralized_series
-        return scores / scores.std()
+        return scores / scores.std(ddof=0)
 
 
 class NaiveNeutralizationHelper(MixinNeutralizationHelper):
@@ -83,6 +94,21 @@ class NaiveNeutralizationHelper(MixinNeutralizationHelper):
             exposures[self.feature_groups], scores=scores.to_frame(), proportion=self.proportion,
             normalize=self.normalize).squeeze()  # TODO: test this code
 
+    def neutralize(
+            self, exposures: pd.DataFrame, scores: pd.Series, feature_groups: Optional[List[str]] = None) -> pd.Series:
+        """
+
+        :param exposures:
+        :param scores:
+        :param feature_groups:
+        :return:
+        """
+        if not feature_groups:
+            feature_groups = self.feature_groups
+
+        exposures = exposures.reindex(columns=feature_groups)
+        return self._neutralize(exposures=exposures, scores=scores)
+
 
 class RegNeutralizationHelper(MixinNeutralizationHelper):
     def __init__(
@@ -90,13 +116,16 @@ class RegNeutralizationHelper(MixinNeutralizationHelper):
             pipeline_configs: Optional[List[Dict[str, Any]]] = None, **kwargs):
         super().__init__(feature_groups=feature_groups, proportion=proportion)
         self.pipeline_configs: Optional[List[Dict[str, Any]]] = pipeline_configs
+        self.debug_info: bool = False
 
     def _neutralize(
             self, exposures: pd.DataFrame, scores: pd.Series, **kwargs) -> pd.Series:
         neutralize_estimator = neutralize_estimator_factory(pipeline_configs=self.pipeline_configs)
         neutralized_series = neutralize_estimator.fit(exposures, scores).predict(exposures)
-        rmse = metrics.mean_squared_error(neutralized_series, scores, squared=False)
-        logging.info(f"rmse: {rmse: .6f}, mean: {neutralized_series.mean(): .3f}, std: {neutralized_series.std(): .3f}")
+        if self.debug_info:
+            rmse = metrics.mean_squared_error(neutralized_series, scores, squared=False)
+            logging.debug(
+                f"rmse: {rmse: .6f}, mean: {neutralized_series.mean(): .3f}, std: {neutralized_series.std(): .3f}")
         return neutralized_series
 
 
@@ -104,8 +133,15 @@ class _BaseMultiNeutralizationHelper(INeutralizationHelper):
     def __init__(self, neutralize_helpers: List[MixinNeutralizationHelper]):
         self.neutralize_helpers: List[MixinNeutralizationHelper] = neutralize_helpers
 
+    @property
+    def has_feature_groups_(self) -> bool:
+        return False
+
     def neutralize(self, exposures: pd.DataFrame, scores: pd.Series, **kwargs) -> pd.Series:
         for nh in self.neutralize_helpers:
+            if not nh.has_feature_groups_:
+                continue
+
             scores = nh.neutralize(exposures=exposures, scores=scores)
             scores = nh._normalize(scores)
 

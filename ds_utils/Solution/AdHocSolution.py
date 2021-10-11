@@ -166,7 +166,7 @@ class NeutralizeSolution(AdHocSolution):
 
         reference_filepath: str = os.path.join(
             ft.default_data_dir,
-            ft.feature_analysis_filename_template.format(eval_type=eval_type, target=infer_data.y_name_))
+            ft.feature_analysis_filename_template.format(eval_type="training", target=infer_data.y_name_))
         reference = pd.read_parquet(reference_filepath)[self.metric]
 
         df_prediction = self._read_predictions(eval_type=eval_type, solution_dir=self.solution_dir)

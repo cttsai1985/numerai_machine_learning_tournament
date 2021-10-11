@@ -154,9 +154,10 @@ class EvaluationDataHelper(DataHelper):
             cols_group=cols_group, on_disk=on_disk)
 
     @staticmethod
-    def _concat_data(list_of_data: List[Union[pd.DataFrame, pd.Series]]) -> pd.DataFrame:
+    def _concat_data(list_of_data: List[Union[pd.DataFrame, pd.Series]], dropna: bool = False) -> pd.DataFrame:
         data: pd.DataFrame = pd.concat(list_of_data, axis=1, sort=False)
-        data.dropna(inplace=True)
+        if dropna:
+            data.dropna(inplace=True)
         return data
 
     def pct_rank_normalize(self, yhat: pd.Series, ) -> pd.Series:
