@@ -8,7 +8,6 @@ from pathlib import Path
 from typing import Optional, Callable, Any, Dict, List, Tuple, Union
 from ds_utils import Utils
 from ds_utils import DiagnosticUtils
-from ds_utils import NeutralizeUtils
 from ds_utils import Metrics
 
 
@@ -245,30 +244,13 @@ class EvaluationDataHelper(DataHelper):
         logging.info(f"Performance on target: {y_name}:\n{score_all}\n\n{score_split}\n\n{score_split.describe()}")
         return predictions, score_all, score_split
 
-    def neutralize_yhat_by_feature(
-            self, yhat: pd.Series, reference: pd.Series, quantiles: List[float], proportion_mapping: Dict[str, float],
-            pipeline_configs: Optional[List[Dict[str, Any]]] = None):
-        feature_groups = NeutralizeUtils.select_feature_groups_to_neutralize(
-            reference, quantiles=quantiles, proportion_mapping=proportion_mapping)
-
-        y = self.y_
-        data: pd.DataFrame = self._concat_data([self.X_, yhat, y, self.groups_])
-        yhat = yhat.copy()
+    def neutralize_yhat_by_feature(self, yhat: pd.Series, neutralize_func: Callable):
+        data: pd.DataFrame = self._concat_data([self.X_, yhat, self.groups_])
         yhat_name = yhat.name
         gb_df = data.groupby(self.group_name_)
-        for i, proportion, feature_groups in feature_groups:
-            if not proportion:
-                continue
-
-            logging.info(f"neutralization iteration {i}: weight={proportion}, {len(feature_groups)} features")
-            score_before = Metrics.spearman_corr(y, yhat)
-            yhat = gb_df.apply(
-                lambda x: NeutralizeUtils.neutralize(
-                    x.reindex(columns=feature_groups), scores=x[yhat_name], pipeline_configs=pipeline_configs,
-                    proportion=proportion)).reset_index(self.group_name_)[yhat.name]
-            yhat = self.pct_rank_normalize(yhat)
-            score_after = Metrics.spearman_corr(y, yhat)
-            logging.info(f"{score_before}, {score_after}")
-
+        yhat = gb_df.apply(
+            lambda x: neutralize_func(
+                exposures=x[self.cols_feature], scores=x[yhat_name])).reset_index(self.group_name_)[yhat.name]
         return yhat
+
 

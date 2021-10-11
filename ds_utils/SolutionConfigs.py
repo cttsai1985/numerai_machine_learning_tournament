@@ -77,6 +77,12 @@ _available_sklearn_scorer: Dict[str, Callable] = dict([
 ])
 
 
+_available_neutralization_helper: Dict[str, Callable] = dict([
+    ("naive_neutralization", Helper.MultiNaiveNeutralizationHelper),
+    ("regression_neutralization", Helper.MultiRegNeutralizationHelper),
+])
+
+
 class BaseSolutionConfigs:
     def __init__(
             self, root_resource_path: str, configs_file_path: str = "configs.yaml", eval_data_type: str = None, ):
@@ -365,6 +371,9 @@ class NeutralizeSolutionConfigs(BaseSolutionConfigs):
         self.neutralize_model_configs: Optional[SolutionConfigs] = None
         self.model_dir: Optional[str] = None
 
+        self.neutralization_gen_query: str = "regression_neutralization"
+        self.neutralization_gen: Helper.INeutralizationHelper = Helper.MultiRegNeutralizationHelper
+
         self.metric: str = "corrSmartSharpe"
         self.pipeline_configs: Optional[List[Tuple[Any]]] = None
         self.quantiles: Optional[List[float]] = None
@@ -382,6 +391,7 @@ class NeutralizeSolutionConfigs(BaseSolutionConfigs):
             self.proportion_mapping: Dict[str, float] = {0: .25, 1: .5, 2: .75, 3: 1.}
 
     def _configure_solution_from_yaml(self, ):
+        self.neutralization_gen = _available_neutralization_helper.get(self.neutralization_gen_query)
         _config_filepath: str = self.neutralize_model_configs
         if not (os.path.exists(_config_filepath) and os.path.isfile(_config_filepath)):
             logging.error(f"configs does not exist: {_config_filepath}")

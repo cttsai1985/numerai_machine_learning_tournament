@@ -14,6 +14,7 @@ from scipy import stats
 from ds_utils import FilenameTemplate as ft
 from ds_utils.DefaultConfigs import RefreshLevel
 from ds_utils.Solution.BaseSolution import MixinSolution
+from ds_utils.Helper import INeutralizationHelper
 
 _EPSILON: float = sys.float_info.min
 
@@ -137,15 +138,16 @@ class EnsembleSolution(AdHocSolution):
 
 class NeutralizeSolution(AdHocSolution):
     def __init__(
-            self, refresh_level: RefreshLevel, data_manager: "DataManager", metric: str,
-            pipeline_configs: Optional[List[Tuple[Any]]], quantiles: List[float], proportion_mapping: Dict[str, float],
-            solution_dir: str, scoring_func: Optional[Callable] = None, working_dir: Optional[str] = None,
-            **kwargs):
+            self, refresh_level: RefreshLevel, data_manager: "DataManager", neutralization_gen: INeutralizationHelper,
+            metric: str, pipeline_configs: Optional[List[Tuple[Any]]], quantiles: List[float],
+            proportion_mapping: Dict[str, float], solution_dir: str, scoring_func: Optional[Callable] = None,
+            working_dir: Optional[str] = None, **kwargs):
         super().__init__(
             refresh_level=refresh_level, data_manager=data_manager, scoring_func=scoring_func, working_dir=working_dir)
         self.solution_dir: str = solution_dir
         self.is_fitted: bool = True
 
+        self.neutralization_gen: INeutralizationHelper = neutralization_gen
         self.metric: str = metric
         self.pipeline_configs: Optional[List[Tuple[Any]]] = pipeline_configs
         self.quantiles: List[float] = quantiles
@@ -169,18 +171,19 @@ class NeutralizeSolution(AdHocSolution):
 
         df_prediction = self._read_predictions(eval_type=eval_type, solution_dir=self.solution_dir)
         yhat = df_prediction[self.default_yhat_pct_name]
-        # TODO: refactor later
-        yhat = infer_data.neutralize_yhat_by_feature(
-            yhat, reference=reference, quantiles=self.quantiles, proportion_mapping=self.proportion_mapping,
+        neutralizer = self.neutralization_gen.from_arguments(
+            reference, quantiles=self.quantiles, proportion_mapping=self.proportion_mapping,
             pipeline_configs=self.pipeline_configs)
 
+        yhat = infer_data.neutralize_yhat_by_feature(yhat, neutralize_func=neutralizer.neutralize)
         return yhat.reindex(index=y.index).to_frame(self.default_yhat_name)
 
     @classmethod
     def from_configs(cls, args: Namespace, configs: "SolutionConfigs", output_data_path: str, **kwargs):
         return cls(
-            args.refresh_level, configs.data_manager_, metric=configs.metric, pipeline_configs=configs.pipeline_configs,
-            quantiles=configs.quantiles, proportion_mapping=configs.proportion_mapping, solution_dir=configs.model_dir,
+            args.refresh_level, configs.data_manager_, neutralization_gen=configs.neutralization_gen,
+            metric=configs.metric, pipeline_configs=configs.pipeline_configs, quantiles=configs.quantiles,
+            proportion_mapping=configs.proportion_mapping, solution_dir=configs.model_dir,
             scoring_func=configs.scoring_func, working_dir=output_data_path, **kwargs)
 
 
