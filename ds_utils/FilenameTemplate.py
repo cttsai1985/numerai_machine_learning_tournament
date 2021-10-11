@@ -20,6 +20,7 @@ numerai_example_filename_pairs: List[Tuple[str]] = [
 ]
 
 # feature/target columns
+default_feature_collection_filename_template: str = "features_{select_filter}_{feature_num:04d}.json"
 default_feature_collection_filename: str = "features_numerai.json"
 default_target_collection_filename: str = "targets.json"
 round_identifier_template: str = "numerai_tournament_round_{num_round:04d}"
