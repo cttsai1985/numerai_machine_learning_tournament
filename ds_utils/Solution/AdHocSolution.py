@@ -111,7 +111,7 @@ class EnsembleSolution(AdHocSolution):
                 df[col] = self._check_prediction(df_prediction)[self.default_yhat_pct_name]
 
             cols_prediction.append(col)
-            logging.warning(f"Adding {col} into ensemble from {solution_dir}")
+            logging.warning(f"Adding {col} ({df_prediction.shape}) into ensemble from {solution_dir}")
 
         if df.empty:
             logging.warning(f"no predictions to form ensemble predictions.")

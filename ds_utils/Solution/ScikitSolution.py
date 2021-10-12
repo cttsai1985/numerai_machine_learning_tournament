@@ -2,6 +2,7 @@ import sys
 import os
 import json
 import joblib
+import pdb
 import logging
 import numpy as np
 import pandas as pd
@@ -133,6 +134,11 @@ class RegressorSolution(ScikitEstimatorSolution):
         X, y, groups = train_data.data_
 
         logging.info(f"training model...")
+        if train_data.y_name_ != "target":
+            if y.isna().any():
+                logging.info(f"fitting y with impute na as 0.5")
+                y.fillna(.5, inplace=True)
+
         self.model.fit(X, y, **self.fit_params)  # TODO: add fit_params:
         self.is_fitted = True
         self._save_model()
@@ -239,7 +245,11 @@ class ClassifierSolution(ScikitEstimatorSolution):
         return self
 
     def _cast_for_classifier_predict_proba(self, target: np.ndarray) -> np.ndarray:
-        return np.dot(target, list(self.data_manager.index2label.values()))
+        ar = np.dot(target, list(self.data_manager.index2label.values()))
+        if np.isnan(ar).any():
+            pdb.set_trace()
+
+        return ar
 
     def _do_inference_for_validation(self, data_type: str) -> pd.Series:
         logging.info(f"inference for validation: {data_type}")
@@ -248,8 +258,7 @@ class ClassifierSolution(ScikitEstimatorSolution):
 
         yhat = self.model.predict_proba(X)
         # yhat = self._cast_for_classifier_predict(pd.Series(yhat, index=y.index, name=self.default_yhat_name))
-        return pd.Series(
-            self._cast_for_classifier_predict_proba(yhat), index=y.index, name=self.default_yhat_name)
+        return pd.Series(self._cast_for_classifier_predict_proba(yhat), index=y.index, name=self.default_yhat_name)
 
     def _do_inference_for_tournament(self, data_type: str) -> pd.Series:
         logging.info(f"inference for tournament: {data_type}")

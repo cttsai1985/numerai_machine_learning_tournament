@@ -154,7 +154,7 @@ class EvaluationDataHelper(DataHelper):
             cols_group=cols_group, on_disk=on_disk)
 
     @staticmethod
-    def _concat_data(list_of_data: List[Union[pd.DataFrame, pd.Series]], dropna: bool = False) -> pd.DataFrame:
+    def _concat_data(list_of_data: List[Union[pd.DataFrame, pd.Series]], dropna: bool = True) -> pd.DataFrame:
         data: pd.DataFrame = pd.concat(list_of_data, axis=1, sort=False)
         if dropna:
             data.dropna(inplace=True)
@@ -246,8 +246,8 @@ class EvaluationDataHelper(DataHelper):
         return predictions, score_all, score_split
 
     def neutralize_yhat_by_feature(self, yhat: pd.Series, neutralize_func: Callable):
-        data: pd.DataFrame = self._concat_data([self.X_, yhat, self.groups_])
         yhat_name = yhat.name
+        data: pd.DataFrame = self._concat_data([self.X_, yhat, self.groups_])
         gb_df = data.groupby(self.group_name_)
         yhat = gb_df.apply(
             lambda x: neutralize_func(

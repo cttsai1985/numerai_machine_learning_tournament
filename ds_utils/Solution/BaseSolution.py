@@ -219,6 +219,7 @@ class MixinSolution(ISolution):
         predictions = self.data_manager.get_example_data_by_type(data_type=data_type).squeeze()
         yhat.index.name = predictions.index.name
         yhat.reindex(index=predictions.index).rename(predictions.name).to_csv(filepath)
+        logging.info(f"save ({yhat.shape}) prediction csv to: {filepath}")
         return yhat
 
     def _do_cross_val(self, data_type: Optional[str] = None):

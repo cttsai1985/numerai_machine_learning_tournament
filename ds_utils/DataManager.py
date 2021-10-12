@@ -40,7 +40,7 @@ class DataManager:
 
     def _create_label_index_mapping(self) -> Dict[int, float]:
         sample_data = self.get_data_helper_by_type(data_type="training", for_evaluation=False)
-        y_ = sample_data.y_.unique()
+        y_ = sample_data.y_.dropna().unique()
         y_.sort()
         return {v: i for i, v in enumerate(y_)}
 
@@ -85,11 +85,17 @@ class DataManager:
         if not index_mapping:
             return y
 
-        y = y.map(index_mapping)
         if y.isna().any():
-            raise ValueError(f"mapping is not completed: {y.isna().sum()}")
+            logging.info(f"labels contained nan: {sorted(y.unique().tolist())}")
+            y.fillna(0.5, inplace=True)
 
-        return y
+        _y = y.map(index_mapping)
+        _y_isna = _y.isna()
+        if _y_isna.any():
+            logging.info(f"mapping is not completed: {_y_isna.sum()} with {y.unique()}")
+            raise ValueError(f"mapping is not completed: {_y_isna.sum()} with {y.unique()}")
+
+        return _y
 
     def cast_target_proba(self, y: pd.Series, cast_type: Optional[str] = None) -> pd.Series:
         if cast_type is None:

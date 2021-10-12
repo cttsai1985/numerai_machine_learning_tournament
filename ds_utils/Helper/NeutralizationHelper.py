@@ -1,3 +1,4 @@
+import pdb
 import logging
 from typing import List, Optional, Dict, Any, Tuple, Callable
 import pandas as pd
@@ -141,6 +142,9 @@ class _BaseMultiNeutralizationHelper(INeutralizationHelper):
         for nh in self.neutralize_helpers:
             if not nh.has_feature_groups_:
                 continue
+
+            if exposures.empty:
+                pdb.set_trace()
 
             scores = nh.neutralize(exposures=exposures, scores=scores)
             scores = nh._normalize(scores)
