@@ -181,7 +181,7 @@ class NumerAPIHelper:
         df.index.name = "attr"
         return df
 
-    def save_diagnostics(self, results: List[Dict[str, Any]], dir_path: Optional[str] = None,):
+    def save_diagnostics(self, results: List[Dict[str, Any]], dir_path: Optional[str] = None, ):
         result_filepath = os.path.join(self.result_dir_current_round_, Path(dir_path).name + ".json")
         with open(result_filepath, "w") as f:
             json.dump(results, fp=f)
@@ -209,4 +209,11 @@ class NumerAPIHelper:
             diagnostics_filename: str = "validation_predictions.csv",
             predictions_filename: str = "tournament_predictions.csv"):
         self.submit_diagnostics(model_name=model_name, dir_path=dir_path, filename=diagnostics_filename)
-        self.submit_predictions(model_name=model_name, dir_path=dir_path, filename=predictions_filename)
+
+        # noinspection PyBroadException
+        try:
+            self.submit_predictions(model_name=model_name, dir_path=dir_path, filename=predictions_filename)
+        except Exception:
+            logging.info(f"submission rejected for {dir_path}")
+
+        return self
