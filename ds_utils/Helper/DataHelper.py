@@ -5,7 +5,7 @@ import logging
 import numpy as np
 import pandas as pd
 from pathlib import Path
-from typing import Optional, Callable, Any, Dict, List, Tuple
+from typing import Optional, Callable, Any, Dict, List, Tuple, Union
 from ds_utils import Utils
 from ds_utils import DiagnosticUtils
 from ds_utils import Metrics
@@ -120,6 +120,14 @@ class DataHelper:
         return data.apply(lambda x: "_".join(x.astype("str")), axis=1).astype("category").rename(self.group_name_)
 
     @property
+    def group_counts_(self) -> List[int]:
+        groups = self.groups_
+        if groups.empty:
+            return list()
+
+        return groups.to_frame().groupby(self.group_name_).size().tolist()
+
+    @property
     def y_(self) -> pd.Series:
         data = self._read_data(columns=[self.col_target])
         return data.squeeze().astype("float")
@@ -145,11 +153,17 @@ class EvaluationDataHelper(DataHelper):
             filename=filename, dataset_type=dataset_type, cols_feature=cols_feature, col_target=col_target,
             cols_group=cols_group, on_disk=on_disk)
 
+    @staticmethod
+    def _concat_data(list_of_data: List[Union[pd.DataFrame, pd.Series]], dropna: bool = True) -> pd.DataFrame:
+        data: pd.DataFrame = pd.concat(list_of_data, axis=1, sort=False)
+        if dropna:
+            data.dropna(inplace=True)
+        return data
+
     def pct_rank_normalize(self, yhat: pd.Series, ) -> pd.Series:
         logging.info(f"rank predictions for regression modeling")
-        groups = self.groups_
-        predictions = pd.concat([yhat, groups], axis=1)
-        return predictions.groupby(groups.name)[yhat.name].apply(lambda x: Utils.pct_ranked(x))
+        predictions = self._concat_data([yhat, self.groups_])
+        return predictions.groupby(self.group_name_)[yhat.name].apply(lambda x: Utils.pct_ranked(x))
 
     def evaluate_with_feature_neutralize(
             self, yhat: pd.Series, col_yhat: str = "yhat", col_neutral: str = "neutral_yhat",
@@ -157,30 +171,26 @@ class EvaluationDataHelper(DataHelper):
         if cols_feature is None:
             cols_feature = self.cols_feature
 
-        groups = self.groups_
-        groups_name = groups.name
+        data: pd.DataFrame = self._concat_data([self.X_, yhat.rename(col_yhat), self.groups_])
 
-        data = pd.concat([self.X_, yhat.rename(col_yhat), groups], axis=1)
         predictions = yhat.to_frame()
-        predictions[col_neutral] = data.groupby(groups_name).apply(
+        predictions[col_neutral] = data.groupby(self.group_name_).apply(
             lambda x: DiagnosticUtils.compute_neutralize(
-                x, target_columns=[col_yhat], neutralizers=cols_feature, proportion=proportion, normalize=normalize))
+                exposures=x[cols_feature], scores=x[[col_yhat]], proportion=proportion, normalize=normalize))
         return predictions[col_neutral].rename(col_yhat)
 
     def evaluate_with_feature(
             self, yhat: pd.Series, method: Optional[Callable] = None, cols_feature: Optional[List[str]] = None,
             **kwargs) -> pd.DataFrame:
 
-        groups = self.groups_
-        features = self.X_
         if not cols_feature:
             cols_feature = self.cols_feature
 
         if not method:
             method = Metrics.pearson_corr
 
-        data: pd.DataFrame = pd.concat([features, yhat, groups], axis=1)
-        results = data.groupby(groups.name).apply(lambda x: DiagnosticUtils.feature_exposure(
+        data: pd.DataFrame = self._concat_data([yhat, self.groups_, self.X_])
+        results = data.groupby(self.group_name_).apply(lambda x: DiagnosticUtils.feature_exposure(
             x, columns_feature=cols_feature, column_target=yhat.name, method=method))
         # results.columns.name = ""
         logging.info(f"Evaluation with features: {data.shape[0]}:\n{results.max().describe()}")
@@ -189,43 +199,34 @@ class EvaluationDataHelper(DataHelper):
     def evaluate_with_y_and_example(
             self, yhat: pd.Series, example_yhat: pd.Series, method: Optional[Callable] = None,
             col_yhat: str = "yhat", column_example: str = "example_prediction", **kwargs) -> pd.DataFrame:
-        groups = self.groups_
-        groups_name = groups.name
-
-        y = self.y_
-        y_name = y.name
-
         if not method:
             method = "pearson"  # Metrics.pearson_corr
 
-        predictions: pd.DataFrame = pd.concat(
-            [y, yhat.rename(col_yhat), example_yhat.rename(column_example), groups], axis=1)
-        predictions.dropna(inplace=True)
-        gpdf_predictions = predictions.groupby(groups_name)
+        predictions: pd.DataFrame = self._concat_data(
+            [self.y_, yhat.rename(col_yhat), example_yhat.rename(column_example), self.groups_])
+        gpdf_predictions = predictions.groupby(self.group_name_)
         example_corr = gpdf_predictions.apply(
             lambda x: x[column_example].corr(other=x[col_yhat], method=method)).rename("examplePredsCorr")
         meta_model_control = gpdf_predictions.apply(
             lambda x: DiagnosticUtils.meta_model_control(
-                submit=x[col_yhat], example=x[column_example], target=x[y_name])).rename("metaModelControl")
+                submit=x[col_yhat], example=x[column_example], target=x[self.y_name_])).rename("metaModelControl")
 
         # results.columns.name = ""
         results = pd.concat([example_corr, meta_model_control], axis=1, sort=False)
-        logging.info(f"Evaluation with example predictions: {y_name}:\n{results}\n\n{results.describe()}")
+        logging.info(f"Evaluation with example predictions: {self.y_name_}:\n{results}\n\n{results.describe()}")
         return results
 
     def evaluate_with_y(
             self, yhat: pd.Series, scoring_func: Callable, col_yhat: str = "yhat", scoring_type: Optional[str] = None,
             **kwargs) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
 
-        groups = self.groups_
-        groups_name = groups.name
-
         y = self.y_
-        y_name = y.name
-        logging.info(f"evaluate_with_y: {y.name} ({y.shape})")
+        y_name = self.y_name_
+        logging.info(f"evaluate_with_y: {y_name} ({y.shape})")
+        groups = self.groups_
 
-        predictions: pd.DataFrame = pd.concat([y, yhat.rename(col_yhat), groups], axis=1)
-        gpdf_predictions = predictions.groupby(groups_name)
+        predictions: pd.DataFrame = self._concat_data([y, yhat.rename(col_yhat), groups])
+        gpdf_predictions = predictions.groupby(self.group_name_)
 
         score_split: pd.DataFrame = gpdf_predictions.apply(
             lambda x: scoring_func(x[y_name], x[col_yhat], scoring_type=scoring_type))
@@ -233,7 +234,7 @@ class EvaluationDataHelper(DataHelper):
 
         # all score
         score_all: pd.DataFrame = scoring_func(
-            y, predictions[col_yhat], scoring_type=scoring_type).to_frame("evaluationMean")
+            predictions[y_name], predictions[col_yhat], scoring_type=scoring_type).to_frame("evaluationMean")
         score_all["sharpeByEra"] = DiagnosticUtils.sharpe_ratio(score_split)
         score_all["meanByEra"] = score_split.mean()
         score_all["stdByEra"] = score_split.std()
@@ -243,3 +244,14 @@ class EvaluationDataHelper(DataHelper):
 
         logging.info(f"Performance on target: {y_name}:\n{score_all}\n\n{score_split}\n\n{score_split.describe()}")
         return predictions, score_all, score_split
+
+    def neutralize_yhat_by_feature(self, yhat: pd.Series, neutralize_func: Callable):
+        yhat_name = yhat.name
+        data: pd.DataFrame = self._concat_data([self.X_, yhat, self.groups_])
+        gb_df = data.groupby(self.group_name_)
+        yhat = gb_df.apply(
+            lambda x: neutralize_func(
+                exposures=x[self.cols_feature], scores=x[yhat_name])).reset_index(self.group_name_)[yhat.name]
+        return yhat
+
+

@@ -45,16 +45,14 @@ def smart_sortino_ratio(data: pd.DataFrame, target: float = .02) -> pd.Series:
 
 
 def compute_neutralize(
-        data: pd.DataFrame, target_columns: List[str], neutralizers: List[str], proportion: float,
-        normalize: bool) -> pd.DataFrame:
-    scores = data[target_columns]
+        exposures: pd.DataFrame, scores: pd.DataFrame, proportion: float, normalize: bool) -> pd.DataFrame:
     if normalize:
         scores = scores.apply(lambda x: stats.norm.ppf(Utils.scale_uniform(x, middle=.5)))
 
     _scores = scores.values.astype(np.float32)
-    exposures = data[neutralizers].values.astype(np.float32)
+    exposures = exposures.values.astype(np.float32)
     exposures = pd.DataFrame(
-        exposures.dot(np.linalg.pinv(exposures).dot(_scores)), columns=target_columns, index=data.index)
+        exposures.dot(np.linalg.pinv(exposures).dot(_scores)), columns=scores.columns, index=scores.index)
 
     scores -= proportion * exposures
     return scores / scores.std(ddof=0)
@@ -65,7 +63,7 @@ def feature_neutral_mean(
         method: str = "pearson", column_prediction: str = "prediction", column_target: str = "target",
         column_neutral: str = "neutral_score") -> pd.Series:
     data[column_neutral] = compute_neutralize(
-        data, target_columns=[column_prediction], neutralizers=feature_columns, proportion=proportion,
+        exposures=data[feature_columns], scores=data[[column_prediction]], proportion=proportion,
         normalize=normalize)[column_prediction]
     return Utils.scale_uniform(data[column_neutral]).corr(data[column_target], method=method)
 
