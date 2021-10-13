@@ -81,7 +81,7 @@ def compile_base_command(
 
 def compute_inference(params: Tuple):
     execute_params, config_file, i, num_task_sequence = params
-    logging.info(f"inference: {i:8d} / {num_task_sequence}")
+    logging.info(f"inference: {i + 1:8d} / {num_task_sequence}")
     execute_config_file = execute_params["config_file"]
     logging.info(f"inference with: {execute_config_file}")
     execute_on_process(compile_infer(**execute_params))
@@ -90,7 +90,7 @@ def compute_inference(params: Tuple):
 
 def compute_offline_evaluation(params: Tuple):
     execute_params, config_file, i, num_task_sequence = params
-    logging.info(f"offline evaluation: {i:8d} / {num_task_sequence}")
+    logging.info(f"offline evaluation: {i + 1:8d} / {num_task_sequence}")
 
     execute_config_file = execute_params["config_file"]
     offline_diagnostic_configs = config_file["offline_diagnostics"]
@@ -106,7 +106,7 @@ def compute_offline_evaluation(params: Tuple):
 
 def compute_online_evaluation(params: Tuple):
     execute_params, config_file, i, num_task_sequence = params
-    logging.info(f"online evaluation: {i:8d} / {num_task_sequence}")
+    logging.info(f"online evaluation: {i + 1:8d} / {num_task_sequence}")
 
     execute_config_file = execute_params["config_file"]
     logging.info(f"online evaluate with: {execute_config_file}")
