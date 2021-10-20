@@ -216,7 +216,7 @@ class CatBoostRankerSolution(RankerSolution):
         X, y, groups = train_data.data_
 
         logging.info(f"training model...")
-        self.model.fit(X, y, group_id=groups, **self.fit_params)  # TODO: add fit_params:
+        self.model.fit(X, self._cast_for_classifier_fit(y), group_id=groups, **self.fit_params)  # TODO: add fit_params:
         self.is_fitted = True
         self._save_model()
         return self
