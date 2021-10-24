@@ -61,7 +61,17 @@ class NumerAPIHelper:
         self.data_dir_path: str = os.path.join(self.root_dir_path, "latest_tournament_datasets")
         logging.info(f"data dir: {self.data_dir_path}")
 
-        self.current_round_str = f"{self.api.get_current_round():04d}"
+        while True:
+            # noinspection PyBroadException
+            try:
+                _current_round: str = self.api.get_current_round()
+                break
+
+            except Exception:
+                logging.info(f"retrieving current round failed")
+                time.sleep(secs=.5)
+
+        self.current_round_str = f"{_current_round:04d}"
         self.round_identifier_template: str = "numerai_tournament_round"
         self.current_round_identifier: str = "_".join([self.round_identifier_template, self.current_round_str])
         logging.info(f"current round identifier: {self.current_round_identifier}")
