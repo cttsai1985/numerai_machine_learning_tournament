@@ -23,7 +23,7 @@ WORKDIR="/root/src/script"
 
 docker rm $(docker ps -a -q)
 
-CMD="bash ./weekly_infer.sh"
+CMD="bash housekeep_adhoc_solutions.sh"
 
 echo docker run -i -t --cpus=${CPU_COUNTS} --gpus ${GPU_DEVICE} -p $RootPort1:$DockerRootPort1 -p $RootPort2:$DockerRootPort2 -e PYTHONPATH=/root/src -v ${RootSrcPath}:${DockerRootSrcPath} -v $(readlink -f ${DataPath}):${DockerDataPath} --shm-size $SHM_SIZE --workdir=${WORKDIR} --env-file env.local $DOCKER_IMAGE $CMD
 
