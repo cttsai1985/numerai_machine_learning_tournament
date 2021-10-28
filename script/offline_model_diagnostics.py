@@ -102,33 +102,43 @@ def compute_corr_with_example(example_filepath: str, columns: Optional[List[str]
 
 
 def compute_corr_plus_mmc(
-        corr_filepath: str, example_filepath: str, columns: Optional[List[str]] = None, ) -> pd.Series:
+        corr_filepath: str, example_filepath: str, columns: Optional[List[str]] = None,
+        weight_mmc: float = 1.) -> pd.Series:
     df_corr = _read_dataframe(corr_filepath, columns=columns)
     df_mmc = _read_dataframe(example_filepath, columns=["metaModelControl"])
 
-    df_corr = df_corr.squeeze() + df_mmc.squeeze()
+    df_corr = df_corr.squeeze() + weight_mmc * df_mmc.squeeze()
     return df_corr.rename("corrPlusMmc")
 
 
 def compute_corr_plus_mmc_mean(
         corr_filepath: str, example_filepath: str, columns: Optional[List[str]] = None, ) -> pd.Series:
     df_corr = compute_corr_plus_mmc(
-        corr_filepath=corr_filepath, example_filepath=example_filepath, columns=columns)
+        corr_filepath=corr_filepath, example_filepath=example_filepath, columns=columns, weight_mmc=1.)
     return pd.Series(df_corr.mean(), index=columns, name="corrPlusMmcMean")
 
 
 def compute_corr_plus_mmc_std(
         corr_filepath: str, example_filepath: str, columns: Optional[List[str]] = None, ) -> pd.Series:
     df_corr = compute_corr_plus_mmc(
-        corr_filepath=corr_filepath, example_filepath=example_filepath, columns=columns)
+        corr_filepath=corr_filepath, example_filepath=example_filepath, columns=columns, weight_mmc=1.)
     return pd.Series(df_corr.std(), index=columns, name="corrPlusMmcStd")
 
 
 def compute_corr_plus_mmc_sharpe(
         corr_filepath: str, example_filepath: str, columns: Optional[List[str]] = None, ) -> pd.Series:
     df_corr = compute_corr_plus_mmc(
-        corr_filepath=corr_filepath, example_filepath=example_filepath, columns=columns)
+        corr_filepath=corr_filepath, example_filepath=example_filepath, columns=columns, weight_mmc=1.)
     return pd.Series(DiagnosticUtils.sharpe_ratio(df_corr), index=columns, name="corrPlusMmcSharpe")
+
+
+def compute_corr_plus_mmc_smart_sharpe(
+        corr_filepath: str, example_filepath: str, columns: Optional[List[str]] = None, ) -> pd.Series:
+    df_corr = compute_corr_plus_mmc(
+        corr_filepath=corr_filepath, example_filepath=example_filepath, columns=columns, weight_mmc=1.)
+    series = DiagnosticUtils.smart_sharpe(df_corr.to_frame())
+    series.index = columns
+    return series.rename("corrPlusMmcSmartSharpe")
 
 
 def compute_corr_plus_mmc_sharpe_diff(
@@ -137,6 +147,44 @@ def compute_corr_plus_mmc_sharpe_diff(
         corr_filepath=corr_filepath, example_filepath=example_filepath, columns=columns)
     valid_sharpe = compute_sharpe(filepath=corr_filepath, columns=columns)
     return (corr_plus_mmc_sharpe - valid_sharpe).rename("corrPlusMmcSharpeDiff")
+
+
+def compute_corr_plus_double_mmc_mean(
+        corr_filepath: str, example_filepath: str, columns: Optional[List[str]] = None, ) -> pd.Series:
+    df_corr = compute_corr_plus_mmc(
+        corr_filepath=corr_filepath, example_filepath=example_filepath, columns=columns, weight_mmc=2.)
+    return pd.Series(df_corr.mean(), index=columns, name="corrPlusDoubleMmcMean")
+
+
+def compute_corr_plus_double_mmc_std(
+        corr_filepath: str, example_filepath: str, columns: Optional[List[str]] = None, ) -> pd.Series:
+    df_corr = compute_corr_plus_mmc(
+        corr_filepath=corr_filepath, example_filepath=example_filepath, columns=columns, weight_mmc=2.)
+    return pd.Series(df_corr.std(), index=columns, name="corrPlusDoubleMmcStd")
+
+
+def compute_corr_plus_double_mmc_sharpe(
+        corr_filepath: str, example_filepath: str, columns: Optional[List[str]] = None, ) -> pd.Series:
+    df_corr = compute_corr_plus_mmc(
+        corr_filepath=corr_filepath, example_filepath=example_filepath, columns=columns, weight_mmc=2.)
+    return pd.Series(DiagnosticUtils.sharpe_ratio(df_corr), index=columns, name="corrPlusDoubleMmcSharpe")
+
+
+def compute_corr_plus_double_mmc_smart_sharpe(
+        corr_filepath: str, example_filepath: str, columns: Optional[List[str]] = None, ) -> pd.Series:
+    df_corr = compute_corr_plus_mmc(
+        corr_filepath=corr_filepath, example_filepath=example_filepath, columns=columns, weight_mmc=2.)
+    series = DiagnosticUtils.smart_sharpe(df_corr.to_frame())
+    series.index = columns
+    return series.rename("corrPlusDoubleMmcSmartSharpe")
+
+
+def compute_corr_plus_double_mmc_sharpe_diff(
+        corr_filepath: str, example_filepath: str, columns: Optional[List[str]] = None, ) -> pd.Series:
+    corr_plus_mmc_sharpe = compute_corr_plus_double_mmc_sharpe(
+        corr_filepath=corr_filepath, example_filepath=example_filepath, columns=columns)
+    valid_sharpe = compute_sharpe(filepath=corr_filepath, columns=columns)
+    return (corr_plus_mmc_sharpe - valid_sharpe).rename("corrPlusMmcDoubleSharpeDiff")
 
 
 def compute_max_feature_exposure(feature_exposure_filepath: str, columns: Optional[List[str]] = None, ) -> pd.Series:
@@ -213,15 +261,33 @@ def compute(
         ("maxDrawDown", compute_max_draw_down, dict(filepath=score_split_file_path, columns=columns_corr)), ]
 
     func_list_with_mmc: List[Tuple[str, Callable, Dict[str, Any]]] = [
+        # MMC
+        ("validMmcMean", compute_mmc_mean, dict(example_filepath=example_analytics_file_path, columns=columns_corr, )),
+
+        # Corr + MMC
         ("corrPlusMmcSharpe", compute_corr_plus_mmc_sharpe, dict(
             corr_filepath=score_split_file_path, example_filepath=example_analytics_file_path, columns=columns_corr, )),
-        ("validMmcMean", compute_mmc_mean, dict(example_filepath=example_analytics_file_path, columns=columns_corr, )),
+        ("corrPlusMmcSmartSharpe", compute_corr_plus_mmc_smart_sharpe, dict(
+            corr_filepath=score_split_file_path, example_filepath=example_analytics_file_path, columns=columns_corr, )),
         ("validCorrPlusMmcSharpeDiff", compute_corr_plus_mmc_sharpe_diff, dict(
             corr_filepath=score_split_file_path, example_filepath=example_analytics_file_path, columns=columns_corr, )),
         ("validCorrPlusMmcMean", compute_corr_plus_mmc_mean, dict(
             corr_filepath=score_split_file_path, example_filepath=example_analytics_file_path, columns=columns_corr, )),
         ("validCorrPlusMmcStd", compute_corr_plus_mmc_std, dict(
             corr_filepath=score_split_file_path, example_filepath=example_analytics_file_path, columns=columns_corr, )),
+
+        # Corr + weighted MMC
+        ("corrPlusDoubleMmcSharpe", compute_corr_plus_double_mmc_sharpe, dict(
+            corr_filepath=score_split_file_path, example_filepath=example_analytics_file_path, columns=columns_corr, )),
+        ("corrPlusDoubleMmcSmartSharpe", compute_corr_plus_double_mmc_smart_sharpe, dict(
+            corr_filepath=score_split_file_path, example_filepath=example_analytics_file_path, columns=columns_corr, )),
+        ("validCorrPlusDoubleMmcSharpeDiff", compute_corr_plus_double_mmc_sharpe_diff, dict(
+            corr_filepath=score_split_file_path, example_filepath=example_analytics_file_path, columns=columns_corr, )),
+        ("validCorrPlusDoubleMmcMean", compute_corr_plus_double_mmc_mean, dict(
+            corr_filepath=score_split_file_path, example_filepath=example_analytics_file_path, columns=columns_corr, )),
+        ("validCorrPlusDoubleMmcStd", compute_corr_plus_double_mmc_std, dict(
+            corr_filepath=score_split_file_path, example_filepath=example_analytics_file_path, columns=columns_corr, )),
+
         ("examplePredsCorr", compute_corr_with_example, dict(
             example_filepath=example_analytics_file_path, columns=columns_corr, )),
     ]
@@ -278,12 +344,22 @@ if "__main__" == __name__:
         "maxDrawDown",
 
         # meta model control
-        "corrPlusMmcSharpe",
         "validMmcMean",
-        "validCorrPlusMmcSharpeDiff",
         "examplePredsCorr",
+
+        #
+        "corrPlusMmcSharpe",
+        "corrPlusMmcSmartSharpe",
         "validCorrPlusMmcMean",
         "validCorrPlusMmcStd",
+        "validCorrPlusMmcSharpeDiff",
+
+        #
+        "corrPlusDoubleMmcSharpe",
+        "corrPlusDoubleMmcSmartSharpe",
+        "validCorrPlusDoubleMmcMean",
+        "validCorrPlusDoubleMmcStd",
+        "validCorrPlusDoubleMmcSharpeDiff",
     ]
 
     _column_target = configs.column_target

@@ -18,23 +18,36 @@ from ds_utils import FilenameTemplate as ft
 from numerai_utils import NumerAPIHelper
 
 _MetricsFuncMapping = {
+    # Return
     "corrSharpe": "nlargest",
     "corrMean": "nlargest",
-    "corrSmartSharpe": "nlargest",
-    "corrSmartSortinoRatio": "nlargest",
     "payout": "nlargest",
 
+    # Risk
     "corrStd": "nsmallest",
     "maxFeatureExposure": "nsmallest",
     "maxDrawDown": "nlargest",
 
-    "corrPlusMmcSharpe": "nlargest",
+    # MMC
     "mmcMean": "nlargest",
-    "corrPlusMmcSharpeDiff": "nlargest",  # due to minus value
     "examplePredsCorr": "nsmallest",
 
-    "corrSmartSharpe": "nlargest",
+    # MMC-Weighted Return
+    "corrPlusMmcSharpe": "nlargest",
+    "corrPlusMmcSharpeDiff": "nlargest",  # due to minus value
+    "validCorrPlusMmcMean": "nlargest",
+    "validCorrPlusMmcStd": "nsmallest",
+
+    "corrPlusDoubleMmcSharpe": "nlargest",
+    "corrPlusDoubleMmcSharpeDiff": "nlargest",  # due to minus value
+    "validCorrPlusDoubleMmcMean": "nlargest",
+    "validCorrPlusDoubleMmcStd": "nsmallest",
+
+    # AutoCorr Sharp
     "corrSmartSortinoRatio": "nlargest",
+    "corrSmartSharpe": "nlargest",
+    "corrPlusMmcSmartSharpe": "nlargest",
+    "corrPlusDoubleMmcSmartSharpe": "nlargest",
 }
 
 

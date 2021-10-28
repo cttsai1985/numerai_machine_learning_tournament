@@ -9,7 +9,6 @@ from sklearn.preprocessing import StandardScaler, MinMaxScaler
 from sklearn.pipeline import make_pipeline
 from sklearn import linear_model
 from sklearn import metrics
-# from sklearn import svm
 from sklearn.base import BaseEstimator
 from cuml import ElasticNet
 from cuml import MBSGDRegressor
@@ -23,10 +22,15 @@ from ds_utils import DiagnosticUtils
 def neutralize_estimator_factory(pipeline_configs: Optional[List[Dict[str, Any]]] = None) -> BaseEstimator:
     if not pipeline_configs:
         # param_grid = {"epsilon": [.1, .05, .025, .01, ], "C": [.25, .5, 1, 2, 4], "gamma": ["scale", "auto"]}
-        # neutralize_estimator =
-        # param_grid = {"l1_ratio": [.25, .5, .75], "alpha": [.5, 1]}
-        param_grid = {"alpha": [0.0001], "l1_ratio": [.15, .25, .5]}
-        neutralize_estimator = MBSGDRegressor(penalty="elasticnet", epochs=3000)
+        # neutralize_estimator = svm.SVR()
+
+        # ElasticNet
+        # param_grid = {"l1_ratio": [.25, .5, .75], "alpha": [0.0001]}
+        # neutralize_estimator = ElasticNet(fit_intercept=True, normalize=False, max_iter=1000)
+
+        # SDGR
+        param_grid = {"alpha": [0.0001], "l1_ratio": [.25, .5]}
+        neutralize_estimator = MBSGDRegressor(loss="squared_loss", penalty="elasticnet", epochs=2000)
         params = {"scoring": "neg_root_mean_squared_error", "n_jobs": 1, "refit": True, "cv": 5}
         return GridSearchCV(neutralize_estimator, param_grid=param_grid, **params)
 
