@@ -26,6 +26,7 @@ python3 run.py --configs ../infer_configs/infer_mix_cat_multiclf_alt.yaml
 python3 run.py --configs ../infer_configs/infer_reference.yaml
 python3 run.py --configs ../infer_configs/infer_reference_arthur.yaml
 python3 run.py --configs ../infer_configs/infer_reference_ben.yaml
+python3 run.py --configs ../infer_configs/infer_reference_jerome.yaml
 python3 run.py --configs ../infer_configs/infer_reference_thomas.yaml
 python3 run.py --configs ../infer_configs/infer_reference_william.yaml
 python3 run.py --configs ../infer_configs/infer_reference_example.yaml
