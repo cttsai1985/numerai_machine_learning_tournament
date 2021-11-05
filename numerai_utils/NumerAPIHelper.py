@@ -41,6 +41,7 @@ _FILENAMES: List[str] = [
     "numerai_tournament_data.parquet",
     "numerai_training_data.parquet",
     "numerai_validation_data.parquet",
+    "features.json",
 ]
 
 

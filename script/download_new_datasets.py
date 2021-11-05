@@ -32,6 +32,8 @@ if "__main__" == __name__:
         "numerai_tournament_data.parquet",
         # "numerai_training_data.parquet",
         # "numerai_validation_data.parquet",
+        # "features.json",
+
     ]
     if not _args.update_only:
         filenames = None
