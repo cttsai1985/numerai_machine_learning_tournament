@@ -1,13 +1,11 @@
 import sys
 import os
 import json
-import joblib
 import logging
 import numpy as np
 import pandas as pd
 from copy import deepcopy
 from argparse import Namespace
-from pathlib import Path
 from typing import Optional, Callable, Any, Dict, List, Tuple
 from scipy import stats
 
@@ -17,6 +15,20 @@ from ds_utils.Solution.BaseSolution import MixinSolution
 from ds_utils.Helper import INeutralizationHelper
 
 _EPSILON: float = sys.float_info.min
+
+
+def mean_predictions(data: pd.Series) -> float:
+    return data.mean()
+
+
+def geometric_mean_predictions(data: pd.Series) -> float:
+    return stats.gmean(data)
+
+
+_ENSEMBLE_METHODS: Dict[str, Callable] = {
+    "mean": mean_predictions,
+    "gmean": geometric_mean_predictions
+}
 
 
 class AdHocSolution(MixinSolution):
@@ -118,11 +130,8 @@ class EnsembleSolution(AdHocSolution):
             return pd.DataFrame()
 
         ret = df[[groupby_col]]
-        if self.ensemble_method == "mean":
-            ret[self.default_yhat_name] = df[cols_prediction].apply(lambda x: x.mean(), axis=1)
-        elif self.ensemble_method == "gmean":
-            ret[self.default_yhat_name] = df[cols_prediction].apply(lambda x: stats.gmean(x), axis=1)
-
+        ensemble_func = _ENSEMBLE_METHODS.get(self.ensemble_method, default=mean_predictions)
+        ret[self.default_yhat_name] = df[cols_prediction].apply(lambda x: ensemble_func(x), axis=1)
         logging.info(f"Generated {ret.shape[0]} predictions from {df.shape[0]} samples")
 
         logging.info(f"correlation intra predictions:\n{df.groupby(groupby_col).corr(method='spearman')}")
@@ -131,6 +140,9 @@ class EnsembleSolution(AdHocSolution):
     @classmethod
     def from_configs(
             cls, args: Namespace, configs: "SolutionConfigs", output_data_path: str, **kwargs):
+        if configs.ensemble_method not in _ENSEMBLE_METHODS.keys():
+            raise ValueError(f"no method to {configs.ensemble_method}")
+
         return cls(
             args.refresh_level, configs.data_manager_, ensemble_method=configs.ensemble_method,
             solution_dirs=configs.model_dirs, scoring_func=configs.scoring_func, working_dir=output_data_path, **kwargs)
