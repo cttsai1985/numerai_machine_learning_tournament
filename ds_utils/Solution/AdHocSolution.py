@@ -130,7 +130,7 @@ class EnsembleSolution(AdHocSolution):
             return pd.DataFrame()
 
         ret = df[[groupby_col]]
-        ensemble_func = _ENSEMBLE_METHODS.get(self.ensemble_method, default=mean_predictions)
+        ensemble_func = _ENSEMBLE_METHODS.get(self.ensemble_method, mean_predictions)
         ret[self.default_yhat_name] = df[cols_prediction].apply(lambda x: ensemble_func(x), axis=1)
         logging.info(f"Generated {ret.shape[0]} predictions from {df.shape[0]} samples")
 
