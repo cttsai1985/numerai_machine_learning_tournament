@@ -1,11 +1,15 @@
 import os
 from typing import List, Tuple
 
+# default
+default_root_resource_path: str = os.path.join("..", "input", "numerai_tournament_resource")
+default_data_dir_name: str = "latest_tournament_datasets"
+default_meta_data_dir_name: str = "metadata"
+
 # root path
-root_resource_path: str = os.environ.get(
-    "rootResourcePath", os.path.join("..", "input", "numerai_tournament_resource"))
-default_data_dir: str = os.path.join(root_resource_path, "latest_tournament_datasets")
-default_meta_data_dir: str = os.path.join(root_resource_path, "metadata")
+root_resource_path: str = os.environ.get("rootResourcePath", default_root_resource_path)
+default_data_dir: str = os.path.join(root_resource_path, default_data_dir_name)
+default_meta_data_dir: str = os.path.join(root_resource_path, default_meta_data_dir_name)
 
 numerai_data_filename_pairs: List[Tuple[str]] = [
     ("training", "numerai_training_data.parquet",),
