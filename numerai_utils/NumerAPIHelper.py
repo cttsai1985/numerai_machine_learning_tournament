@@ -75,7 +75,7 @@ def retry(times: int = 3, exceptions: Tuple = (ValueError, TypeError, NewConnect
 
 class NumerAPIHelper:
     def __init__(
-            self, root_dir_path: Optional[str] = None, api: Optional[NumerAPI] = None):
+            self, root_dir_path: Optional[str] = None, data_dir: Optional[str] = None, api: Optional[NumerAPI] = None):
 
         self.api: NumerAPI = api
         if api is None:
@@ -87,7 +87,10 @@ class NumerAPIHelper:
             self.root_dir_path: str = os.environ.get("rootResourcePath")
         logging.info(f"current root path: {self.root_dir_path}")
 
-        self.data_dir_path: str = os.path.join(self.root_dir_path, "latest_tournament_datasets")
+        if data_dir is None:
+            data_dir = "latest_tournament_datasets"
+
+        self.data_dir_path: str = os.path.join(self.root_dir_path, data_dir)
         logging.info(f"data dir: {self.data_dir_path}")
 
         # static variables
