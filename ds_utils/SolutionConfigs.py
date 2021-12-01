@@ -22,6 +22,7 @@ from ds_utils import Helper
 from ds_utils import Metrics
 from ds_utils import LGBMUtils
 from ds_utils import Utils
+from ds_utils import FilenameTemplate as ft
 
 
 # Scikit-Learn
@@ -90,13 +91,13 @@ class BaseSolutionConfigs:
         self.configs_hash_str: Optional[str] = None
 
         self.root_resource_path: str = root_resource_path
-        self.meta_data_dir: str = os.path.join(self.root_resource_path, "metadata")
+        self.meta_data_dir: str = os.path.join(self.root_resource_path, ft.default_meta_data_dir_name)
 
         self.eval_data_type: str = eval_data_type if eval_data_type is not None else "training"
 
         self.data_manager: Optional["DataManager"] = None
 
-        self.dataset_name: Optional[str] = "latest_tournament_datasets"
+        self.dataset_name: Optional[str] = ft.default_data_dir_name
         self.data_mapping: Optional[Dict[str, str]] = None
         self.column_target: Optional[str] = "target"
         self.columns_group: Optional[List[str]] = ["era"]
@@ -118,17 +119,28 @@ class BaseSolutionConfigs:
         self.scoring_func: Callable = PerformanceTracker().score
         # self._save_yaml_configs()
 
+    @property
+    def default_feature_columns_file_path_(self) -> str:
+        default_file_path: str = os.path.join(self.meta_data_dir, ft.default_feature_collection_filename)
+        if not all([os.path.exists(default_file_path), os.path.isfile(default_file_path)]):
+            raise ValueError()
+
+        return default_file_path
+
+    def feature_columns_file_path_(self, feature_columns_file_path: Optional[str] = None) -> str:
+        if feature_columns_file_path is not None:
+            if all([os.path.exists(feature_columns_file_path), os.path.isfile(feature_columns_file_path)]):
+                file_path = feature_columns_file_path
+                logging.info(f"load feature target_columns from model location: {file_path}")
+                return file_path
+
+        file_path: str = self.default_feature_columns_file_path_
+        logging.info(f"load feature target_columns from default location: {file_path}")
+        return file_path
+
     def load_feature_columns_from_json(
             self, feature_columns_file_path: Optional[str] = None) -> List[str]:
-        default_file_path: str = os.path.join(self.meta_data_dir, "features_numerai.json")
-        if feature_columns_file_path is None:
-            file_path = default_file_path
-            logging.info(f"load feature target_columns from default location: {feature_columns_file_path}")
-
-        if not all([os.path.exists(feature_columns_file_path), os.path.isfile(feature_columns_file_path)]):
-            file_path = default_file_path
-            logging.info(f"load feature target_columns from default location: {file_path}")
-
+        file_path: str = self.feature_columns_file_path_(feature_columns_file_path=feature_columns_file_path)
         with open(file_path, "r") as fp:
             columns_feature = json.load(fp)
 
