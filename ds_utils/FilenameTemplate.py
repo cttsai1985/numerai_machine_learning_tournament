@@ -29,6 +29,9 @@ default_feature_collection_filename: str = "features_numerai.json"
 default_target_collection_filename: str = "targets.json"
 round_identifier_template: str = "numerai_tournament_round_{num_round:04d}"
 
+#
+data_split_filename_template: str = "data_split_{eval_type}.parquet"
+
 # feature evaluation
 feature_corr_filename_template: str = "numerai_{eval_type}_corr_{target}.parquet"
 
