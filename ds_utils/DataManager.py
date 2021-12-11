@@ -77,6 +77,17 @@ class DataManager:
 
         return True
 
+    @staticmethod
+    def impute_target(y: pd.Series, na_value: Optional[float] = None) -> pd.Series:
+        if y.isna().any():
+            logging.info(f"labels contained nan: {sorted(y.unique().tolist())}")
+            if na_value is None:
+                na_value = 0.5
+
+            y.fillna(na_value, inplace=True)
+
+        return y
+
     def cast_target(self, y: pd.Series, cast_type: Optional[str] = None) -> pd.Series:
         if cast_type is None:
             return y
@@ -85,10 +96,7 @@ class DataManager:
         if not index_mapping:
             return y
 
-        if y.isna().any():
-            logging.info(f"labels contained nan: {sorted(y.unique().tolist())}")
-            y.fillna(0.5, inplace=True)
-
+        y = self.impute_target(y, na_value=0.5)
         _y = y.map(index_mapping)
         _y_isna = _y.isna()
         if _y_isna.any():

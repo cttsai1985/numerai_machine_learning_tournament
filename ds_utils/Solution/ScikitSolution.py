@@ -37,7 +37,7 @@ class ScikitEstimatorSolution(MixinSolution):
 
     def _cast_for_classifier(self, target: pd.Series, cast_type: str):
         if self.data_manager.has_cast_mapping(cast_type):
-            return self.data_manager.cast_target(target, cast_type)
+            return self.data_manager.cast_target(y=target, cast_type=cast_type)
 
         return target
 
@@ -46,6 +46,9 @@ class ScikitEstimatorSolution(MixinSolution):
 
     def _cast_for_classifier_predict(self, target: pd.Series) -> pd.Series:
         return self._cast_for_classifier(target=target, cast_type="index2label")
+
+    def _impute_for_model_fit(self, target: pd.Series, na_value: Optional[float] = None) -> pd.Series:
+        return self.data_manager.impute_target(target=target, na_value=na_value)
 
     @property
     def model_filepath_(self) -> str:
@@ -133,12 +136,9 @@ class RegressorSolution(ScikitEstimatorSolution):
         train_data = self.data_manager.get_data_helper_by_type(data_type=data_type)
         X, y, groups = train_data.data_
 
-        logging.info(f"training model...")
-        if train_data.y_name_ != "target":
-            if y.isna().any():
-                logging.info(f"fitting y with impute na as 0.5")
-                y.fillna(.5, inplace=True)
+        y = self._impute_for_model_fit(target=y, na_value=0.5)
 
+        logging.info(f"training model...")
         self.model.fit(X, y, **self.fit_params)  # TODO: add fit_params:
         self.is_fitted = True
         self._save_model()
@@ -221,9 +221,10 @@ class XGBRankerSolution(RankerSolution):
         X, y, groups = train_data.data_
 
         _groups = train_data.group_counts_
+        _y = self._impute_for_model_fit(target=y, na_value=0.5)
 
         logging.info(f"training model...")
-        self.model.fit(X, y, group=_groups, **self.fit_params)  # TODO: add fit_params:
+        self.model.fit(X, _y, group=_groups, **self.fit_params)  # TODO: add fit_params:
         self.is_fitted = True
         self._save_model()
         return self
@@ -236,9 +237,10 @@ class CatBoostRankerSolution(RankerSolution):
 
         train_data = self.data_manager.get_data_helper_by_type(data_type=data_type)
         X, y, groups = train_data.data_
+        _y = self._impute_for_model_fit(target=y, na_value=0.5)
 
         logging.info(f"training model...")
-        self.model.fit(X, y, group_id=groups, **self.fit_params)  # TODO: add fit_params:
+        self.model.fit(X, _y, group_id=groups, **self.fit_params)  # TODO: add fit_params:
         self.is_fitted = True
         self._save_model()
         return self
