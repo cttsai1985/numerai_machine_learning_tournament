@@ -170,19 +170,7 @@ class RankerSolution(ScikitEstimatorSolution):
             cv_splitter=cv_splitter, scoring_func=scoring_func, working_dir=working_dir, **kwargs)
 
     def _do_model_fit(self, data_type: Optional[str] = None):
-        if self.is_fitted:
-            return self
-
-        train_data = self.data_manager.get_data_helper_by_type(data_type=data_type)
-        X, y, groups = train_data.data_
-
-        _groups = train_data.group_counts_
-
-        logging.info(f"training model...")
-        self.model.fit(X, self._cast_for_classifier_fit(y), group=_groups, **self.fit_params)  # TODO: add fit_params:
-        self.is_fitted = True
-        self._save_model()
-        return self
+        raise NotImplementedError()
 
     def inference_on_group(self, infer_data) -> pd.Series:
         X, y, groups = infer_data.data_
@@ -207,6 +195,40 @@ class RankerSolution(ScikitEstimatorSolution):
         return predictions[self.default_yhat_name]
 
 
+class LGBMRankerSolution(RankerSolution):
+    def _do_model_fit(self, data_type: Optional[str] = None):
+        if self.is_fitted:
+            return self
+
+        train_data = self.data_manager.get_data_helper_by_type(data_type=data_type)
+        X, y, groups = train_data.data_
+
+        _groups = train_data.group_counts_
+
+        logging.info(f"training model...")
+        self.model.fit(X, self._cast_for_classifier_fit(y), group=_groups, **self.fit_params)  # TODO: add fit_params:
+        self.is_fitted = True
+        self._save_model()
+        return self
+
+
+class XGBRankerSolution(RankerSolution):
+    def _do_model_fit(self, data_type: Optional[str] = None):
+        if self.is_fitted:
+            return self
+
+        train_data = self.data_manager.get_data_helper_by_type(data_type=data_type)
+        X, y, groups = train_data.data_
+
+        _groups = train_data.group_counts_
+
+        logging.info(f"training model...")
+        self.model.fit(X, y, group=_groups, **self.fit_params)  # TODO: add fit_params:
+        self.is_fitted = True
+        self._save_model()
+        return self
+
+
 class CatBoostRankerSolution(RankerSolution):
     def _do_model_fit(self, data_type: Optional[str] = None):
         if self.is_fitted:
@@ -216,7 +238,7 @@ class CatBoostRankerSolution(RankerSolution):
         X, y, groups = train_data.data_
 
         logging.info(f"training model...")
-        self.model.fit(X, self._cast_for_classifier_fit(y), group_id=groups, **self.fit_params)  # TODO: add fit_params:
+        self.model.fit(X, y, group_id=groups, **self.fit_params)  # TODO: add fit_params:
         self.is_fitted = True
         self._save_model()
         return self

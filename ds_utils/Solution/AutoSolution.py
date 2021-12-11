@@ -13,26 +13,41 @@ class AutoSolution(ISolution):
 
     @classmethod
     def from_configs(cls, args: Namespace, configs: "SolutionConfigs", output_data_path: str, **kwargs):
-        if configs.model_gen_query == "CatBoostRanker":
-            logging.info(f"RankerSolution")
-            configs.data_manager_.configure_label_index_mapping()
-            return ScikitSolution.CatBoostRankerSolution.from_configs(
+        if configs.model_gen_query.endswith("Regressor"):
+            return ScikitSolution.RegressorSolution.from_configs(
                 args=args, configs=configs, output_data_path=output_data_path)
 
-        if configs.model_gen_query.endswith("Ranker"):
-            logging.info(f"RankerSolution")
-            configs.data_manager_.configure_label_index_mapping()
-            return ScikitSolution.RankerSolution.from_configs(
-                args=args, configs=configs, output_data_path=output_data_path)
-
-        if configs.model_gen_query.endswith("Classifier"):
+        elif configs.model_gen_query.endswith("Classifier"):
             logging.info(f"ClassifierSolution")
             configs.data_manager_.configure_label_index_mapping()
             return ScikitSolution.ClassifierSolution.from_configs(
                 args=args, configs=configs, output_data_path=output_data_path)
 
-        return ScikitSolution.RegressorSolution.from_configs(
-            args=args, configs=configs, output_data_path=output_data_path)
+        if not configs.model_gen_query.endswith("Ranker"):
+            raise ValueError(f"No suitable solution found: {configs.model_gen_query}")
+
+        elif configs.model_gen_query == "LGBMRanker":
+            logging.info(f"LGBMRankerSolution")
+            configs.data_manager_.configure_label_index_mapping()
+            return ScikitSolution.LGBMRankerSolution.from_configs(
+                args=args, configs=configs, output_data_path=output_data_path)
+
+        elif configs.model_gen_query == "CatBoostRanker":
+            logging.info(f"CatBoostRankerSolution")
+            return ScikitSolution.CatBoostRankerSolution.from_configs(
+                args=args, configs=configs, output_data_path=output_data_path)
+
+        elif configs.model_gen_query == "XGBRanker":
+            logging.info(f"XGBRankerSolution")
+            return ScikitSolution.XGBRankerSolution.from_configs(
+                args=args, configs=configs, output_data_path=output_data_path)
+
+        else:
+            logging.info(f"GeneralRankerSolution")
+            return ScikitSolution.RankerSolution.from_configs(
+                args=args, configs=configs, output_data_path=output_data_path)
+
+        raise ValueError(f"No suitable solution found: {configs.model_gen_query}")
 
 
 if "__main__" == __name__:
