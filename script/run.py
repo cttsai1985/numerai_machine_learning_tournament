@@ -37,38 +37,48 @@ def live_output(process):
 
 
 def execute_on_process(command: List[str]):
-    logging.info(f'run command: {" ".join(command)}')
+    # noinspection PyBroadException
+    try:
+        _command = " ".join(filter(lambda x: isinstance(x, str), command))
+        logging.info(f"run command: {_command}")
+
+    except Exception:
+        logging.error(f"failed building command: {command}")
 
     # noinspection PyBroadException
     try:
-        process = subprocess.Popen(" ".join(command), shell=True, stdout=subprocess.PIPE, )
+        process = subprocess.Popen(_command, shell=True, stdout=subprocess.PIPE, )
         live_output(process)
         process.wait()
         time.sleep(1)
 
     except Exception:
-        logging.info(f'failed running command: {" ".join(command)}')
+        logging.error(f"failed running command: {_command}")
 
     return
 
 
-def compile_infer(script_type: str, script_file: str, config_file: str, refresh_level: str, command: List[str]):
-    return [script_type, script_file, "--refresh-level", refresh_level, "--configs", config_file] + command
+def compile_infer(
+        script_type: str, script_file: str, config_file: str, refresh_level: str, command: Optional[List[str]] = None):
+    exec_command = [script_type, script_file, "--configs", config_file, "--refresh-level", refresh_level]
+    if command is not None and command:
+        exec_command += command
+    return exec_command
 
 
 def compile_offline_diagnostics(
         script_type: str, script_file: str, config_file: str, command: Optional[List[str]] = None):
-    ret = [script_type, script_file, "--configs", config_file]
-    if command:
-        ret += command
-    return ret
+    exec_command = [script_type, script_file, "--configs", config_file]
+    if command is not None and command:
+        exec_command += command
+    return exec_command
 
 
 def compile_online_diagnostics(
         script_type: str, script_file: str, config_file: str, model_name: str,
         command: Optional[List[str]] = None, **kwargs):
     exec_command = [script_type, script_file, "--configs", config_file, "--model-name", model_name, ]
-    if command:
+    if command is not None and command:
         exec_command += command
     return exec_command
 
