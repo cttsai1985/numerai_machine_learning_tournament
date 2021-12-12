@@ -259,7 +259,12 @@ class NumerAPIHelper:
             self, model_name: Optional[str] = None, dir_path: Optional[str] = None,
             diagnostics_filename: str = "validation_predictions.csv",
             predictions_filename: str = "tournament_predictions.csv"):
-        self.submit_diagnostics(model_name=model_name, dir_path=dir_path, filename=diagnostics_filename)
+
+        # noinspection PyBroadException
+        try:
+            self.submit_diagnostics(model_name=model_name, dir_path=dir_path, filename=diagnostics_filename)
+        except Exception:
+            logging.info(f"evaluation rejected for weekly predictions from {dir_path}")
 
         # noinspection PyBroadException
         try:
