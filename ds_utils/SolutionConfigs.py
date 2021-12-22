@@ -86,7 +86,8 @@ _available_neutralization_helper: Dict[str, Callable] = dict([
 
 class BaseSolutionConfigs:
     def __init__(
-            self, root_resource_path: str, configs_file_path: str = "configs.yaml", eval_data_type: str = None, ):
+            self, root_resource_path: str, configs_file_path: str = "configs.yaml",
+            eval_data_type: Optional[str] = None, ):
         self.configs_file_path: Optional[str] = configs_file_path
         self.configs_hash_str: Optional[str] = None
 
