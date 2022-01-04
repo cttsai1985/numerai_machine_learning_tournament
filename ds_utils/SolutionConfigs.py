@@ -77,7 +77,6 @@ _available_sklearn_scorer: Dict[str, Callable] = dict([
     ("sklearn_pearson_scorer", sklearn_pearson_scorer),
 ])
 
-
 _available_neutralization_helper: Dict[str, Callable] = dict([
     ("naive_neutralization", Helper.MultiNaiveNeutralizationHelper),
     ("regression_neutralization", Helper.MultiRegNeutralizationHelper),
@@ -93,6 +92,8 @@ class BaseSolutionConfigs:
 
         self.root_resource_path: str = root_resource_path
         self.meta_data_dir: str = os.path.join(self.root_resource_path, ft.default_meta_data_dir_name)
+
+        self.feature_columns_filename: Optional[str] = None
 
         self.eval_data_type: str = eval_data_type if eval_data_type is not None else "training"
 
@@ -136,7 +137,14 @@ class BaseSolutionConfigs:
         if feature_columns_file_path is not None:
             if all([os.path.exists(feature_columns_file_path), os.path.isfile(feature_columns_file_path)]):
                 file_path = feature_columns_file_path
-                logging.info(f"load feature target_columns from model location: {file_path}")
+                logging.info(f"load feature columns from model location: {file_path}")
+                return file_path
+
+        if self.feature_columns_filename is not None:
+            feature_columns_file_path = os.path.join(self.meta_data_dir, self.feature_columns_filename)
+            if all([os.path.exists(feature_columns_file_path), os.path.isfile(feature_columns_file_path)]):
+                file_path = feature_columns_file_path
+                logging.info(f"load alternative feature columns from model location: {file_path}")
                 return file_path
 
         file_path: str = self.default_feature_columns_file_path_
