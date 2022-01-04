@@ -165,8 +165,8 @@ class DataManager:
                 cols_group=cols_group, col_neutralization_reference=self.col_neutralization_reference,
                 neutralization_proportion=self.neutralization_proportion)
 
-        else:
-            obj = DataHelper.from_params(
+        else:  # TODO: fix logics with evaluate_with_y
+            obj = EvaluationDataHelper.from_params(
                 filename=filename, dataset_type=data_type, cols_feature=cols_feature, col_target=col_target,
                 cols_group=cols_group)
 
