@@ -107,6 +107,10 @@ class BaseSolutionConfigs:
 
         self.model_name: str = "foobar"
 
+        # neutralization for target
+        self.column_neutralization_reference: Optional[str] = None
+        self.neutralization_proportion: float = 0.5
+
         self.label2index: Dict[int, float] = dict()
         self.index2label: Dict[float, int] = dict()
 
@@ -265,6 +269,8 @@ class SolutionConfigs(BaseSolutionConfigs):
             "data_mapping": self.data_mapping,
             "column_target": self.column_target,
             "columns_group": self.columns_group,
+            "column_neutralization_reference": self.column_neutralization_reference,
+            "neutralization_proportion": self.neutralization_proportion,
             "model_name": self.model_name,
             "model_gen_query": self.model_gen_query,
             "model_base_params": self.model_base_params,

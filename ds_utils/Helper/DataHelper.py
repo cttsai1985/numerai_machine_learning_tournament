@@ -14,7 +14,7 @@ from ds_utils import Metrics
 class DataHelper:
     def __init__(
             self, filename: str, dataset_type: str, cols_feature: List[str], col_target: str = "target",
-            cols_group: Optional[List[str]] = None, on_disk: bool = True):
+            cols_group: Optional[List[str]] = None, on_disk: bool = True, **kwargs):
         self.filename: str = filename
         self.dataset_type: str = dataset_type
         self.col_target: str = col_target
@@ -29,7 +29,7 @@ class DataHelper:
 
     @classmethod
     def from_params(cls, filename: str, dataset_type: str, cols_feature: List[str], col_target: str = "target",
-                    cols_group: Optional[List[str]] = None, on_disk: bool = True):
+                    cols_group: Optional[List[str]] = None, on_disk: bool = True, **kwargs):
         return cls(
             filename=filename, dataset_type=dataset_type, cols_feature=cols_feature, col_target=col_target,
             cols_group=cols_group, on_disk=on_disk)
@@ -145,10 +145,61 @@ class DataHelper:
         return self.X_, self.y_, self.groups_
 
 
+class NeutralizationDataHelper(DataHelper):
+    def __init__(
+            self, filename: str, dataset_type: str, cols_feature: List[str],
+            col_target: str = "target", cols_group: Optional[List[str]] = None,
+            col_neutralization_reference: str = "target_nomi_60", neutralization_proportion: float = 0.5,
+            on_disk: bool = True, **kwargs):
+        super().__init__(
+            filename=filename, dataset_type=dataset_type, cols_feature=cols_feature, col_target=col_target,
+            cols_group=cols_group, on_disk=on_disk)
+
+        self.col_neutralization_reference: str = col_neutralization_reference
+        self.neutralization_proportion: float = neutralization_proportion
+        self.neutralized_target_name: str = f"neutralization_{self.col_target}"
+
+    @classmethod
+    def from_params(
+            cls, filename: str, dataset_type: str, cols_feature: List[str],
+            col_target: str = "target", cols_group: Optional[List[str]] = None,
+            col_neutralization_reference: str = "target_nomi_60", neutralization_proportion: float = 0.5,
+            on_disk: bool = True, **kwargs):
+        return cls(
+            filename=filename, dataset_type=dataset_type, cols_feature=cols_feature, col_target=col_target,
+            col_neutralization_reference=col_neutralization_reference,
+            neutralization_proportion=neutralization_proportion, cols_group=cols_group, on_disk=on_disk, )
+
+    @staticmethod
+    def _concat_data(list_of_data: List[Union[pd.DataFrame, pd.Series]], dropna: bool = True) -> pd.DataFrame:
+        data: pd.DataFrame = pd.concat(list_of_data, axis=1, sort=False)
+        if dropna:
+            data.dropna(inplace=True)
+        return data
+
+    @property
+    def y_(self) -> pd.Series:
+        target_name = self.col_target
+        cols_group = self.cols_group
+        neutralized_target_name = self.neutralized_target_name
+        neutralized_reference_name = self.col_neutralization_reference
+        neutralization_proportion = self.neutralization_proportion
+
+        cols = cols_group + [neutralized_reference_name, target_name]
+        data = self._read_data(columns=cols).fillna(0.5)
+        y = data.groupby(cols_group).apply(lambda x: DiagnosticUtils.neutralize_series(
+            series=x[target_name],
+            by=x[neutralized_reference_name],
+            proportion=neutralization_proportion)).rename(neutralized_target_name).reset_index(cols_group)
+        y = y.groupby(cols_group).apply(lambda x: Utils.pct_ranked(x[neutralized_target_name]))
+        train_y = y.reset_index(cols_group)[neutralized_target_name].rename(target_name)
+        return train_y
+
+
 class EvaluationDataHelper(DataHelper):
     def __init__(
             self, filename: str, dataset_type: str, cols_feature: List[str], col_target: str = "target",
-            cols_group: Optional[List[str]] = None, on_disk: bool = True):
+            cols_group: Optional[List[str]] = None, on_disk: bool = True, **kwargs):
         super().__init__(
             filename=filename, dataset_type=dataset_type, cols_feature=cols_feature, col_target=col_target,
             cols_group=cols_group, on_disk=on_disk)
@@ -253,5 +304,3 @@ class EvaluationDataHelper(DataHelper):
             lambda x: neutralize_func(
                 exposures=x[self.cols_feature], scores=x[yhat_name])).reset_index(self.group_name_)[yhat.name]
         return yhat
-
-
