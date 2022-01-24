@@ -18,7 +18,8 @@ class DataManager:
     def __init__(
             self, working_dir: str = "./", data_mapping: Dict[str, str] = None, col_target: str = "target",
             cols_group: Optional[List[str]] = None, cols_feature: Optional[List[str]] = None,
-            col_neutralization_reference: Optional[str] = None, neutralization_proportion: float = 0.5, **kwargs):
+            col_neutralization_reference: Optional[str] = "target_nomi_60", neutralization_proportion: float = 0.5,
+            **kwargs):
         self.working_dir: str = working_dir if working_dir else "./"
 
         self.example_mapping: Dict[str, str] = dict(_EXAMPLE_PAIRS)
@@ -67,7 +68,7 @@ class DataManager:
         return cls(
             working_dir=configs.input_data_dir, data_mapping=configs.data_mapping, col_target=configs.column_target,
             cols_group=configs.columns_group, cols_feature=configs.columns_feature,
-            cols_neutralization_reference=column_neutralization_reference,
+            col_neutralization_reference=column_neutralization_reference,
             neutralization_proportion=neutralization_proportion)
 
     def _check_status(self):
