@@ -1,11 +1,15 @@
 import os
 from typing import List, Tuple
 
+# default
+default_root_resource_path: str = os.path.join("..", "input", "numerai_tournament_resource")
+default_data_dir_name: str = "latest_tournament_datasets"
+default_meta_data_dir_name: str = "metadata"
+
 # root path
-root_resource_path: str = os.environ.get(
-    "rootResourcePath", os.path.join("..", "input", "numerai_tournament_resource"))
-default_data_dir: str = os.path.join(root_resource_path, "latest_tournament_datasets")
-default_meta_data_dir: str = os.path.join(root_resource_path, "metadata")
+root_resource_path: str = os.environ.get("rootResourcePath", default_root_resource_path)
+default_data_dir: str = os.path.join(root_resource_path, default_data_dir_name)
+default_meta_data_dir: str = os.path.join(root_resource_path, default_meta_data_dir_name)
 
 numerai_data_filename_pairs: List[Tuple[str]] = [
     ("training", "numerai_training_data.parquet",),
@@ -24,6 +28,9 @@ default_feature_collection_filename_template: str = "features_{select_filter}_{f
 default_feature_collection_filename: str = "features_numerai.json"
 default_target_collection_filename: str = "targets.json"
 round_identifier_template: str = "numerai_tournament_round_{num_round:04d}"
+
+#
+data_split_filename_template: str = "data_split_{eval_type}.parquet"
 
 # feature evaluation
 feature_corr_filename_template: str = "numerai_{eval_type}_corr_{target}.parquet"

@@ -28,8 +28,8 @@ def parse_commandline() -> argparse.Namespace:
 
 
 def compute_corr(
-        feature_file_path: str, output_corr_file_path: str, column_group: str, columns_feature: List[str],
-        column_target: str, refresh: bool = False) -> pd.DataFrame:
+        feature_file_path: str, output_corr_file_path: str, column_group: Union[str, List[str]],
+        columns_feature: List[str], column_target: str, refresh: bool = False) -> pd.DataFrame:
     if refresh or (not (os.path.exists(output_corr_file_path) and os.path.isfile(output_corr_file_path))):
         df = pd.read_parquet(feature_file_path)
         df_corr = df.groupby(column_group).apply(
@@ -62,10 +62,10 @@ def compute_corr_stats(df_corr: pd.DataFrame, output_feature_analysis_filepath: 
 
 
 def compute(
-        root_data_path: str, eval_data_type: str = "validation", column_group: str = "era",
-        column_target: str = "target", refresh: bool = False, **kwargs) -> pd.DataFrame:
+        root_data_path: str, feature_columns_file_path: str, eval_data_type: str = "validation",
+        column_group: Union[str, List[str]] = "era", column_target: str = "target", refresh: bool = False,
+        **kwargs) -> pd.DataFrame:
     # tournament files
-    feature_columns_file_path = os.path.join(configs.meta_data_dir, ft.default_feature_collection_filename)
     with open(feature_columns_file_path, "r") as fp:
         columns_feature = json.load(fp)
 
@@ -93,10 +93,9 @@ if "__main__" == __name__:
     ds_utils.configure_pandas_display()
 
     _args = parse_commandline()
-    configs = SolutionConfigs(root_resource_path=ft.root_resource_path, configs_file_path=_args.configs)
-    _ = compute(
-        root_data_path=ft.default_data_dir, eval_data_type="validation", column_group="era",
-        column_target=configs.column_target, refresh=_args.refresh)
-    _ = compute(
-        root_data_path=ft.default_data_dir, eval_data_type="training", column_group="era",
-        column_target=configs.column_target, refresh=_args.refresh)
+    _configs = SolutionConfigs(root_resource_path=ft.root_resource_path, configs_file_path=_args.configs)
+    for _eval_data_type in ["training", "validation"]:
+        _ = compute(
+            root_data_path=_configs.input_data_dir, feature_columns_file_path=_configs.feature_columns_file_path_(),
+            eval_data_type=_eval_data_type, column_group=_configs.columns_group, column_target=_configs.column_target,
+            refresh=_args.refresh)

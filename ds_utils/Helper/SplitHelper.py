@@ -5,6 +5,7 @@ import pandas as pd
 from typing import Optional
 from sklearn.model_selection import BaseCrossValidator, PredefinedSplit
 
+from ds_utils import FilenameTemplate as ft
 from ds_utils.DataManager import DataManager
 
 
@@ -25,7 +26,7 @@ class PredefinedSplitHelper:
             working_dir=configs.output_dir_)
 
     def split_data_filepath_(self, data_type: str = "training"):
-        return os.path.join(self.working_dir, f"data_split_{data_type}.parquet")
+        return os.path.join(self.working_dir, ft.data_split_filename_template.format(eval_type=data_type))
 
     def _produce(self, data_type: Optional[str] = None) -> pd.Series:
         if data_type is None:
@@ -37,8 +38,7 @@ class PredefinedSplitHelper:
         for i, (_, v_ind) in enumerate(self.cv_splitter.split(_x, y=_y, groups=_groups_cats)):
             arr[v_ind] = i
 
-        ret = pd.Series(arr, index=_x.index, name="label_split")
-        ret.to_frame().to_parquet(self.split_data_filepath_(data_type))
+        ret = pd.Series(arr, index=_x.index, name="label_split").astype(dtype=np.int8)
         return ret
 
     def produce(self, data_type: Optional[str] = None) -> BaseCrossValidator:
@@ -48,4 +48,5 @@ class PredefinedSplitHelper:
             logging.info(f"load cached split data file from: {filepath}")
         else:
             ind_split = self._produce(data_type=data_type)
+            ind_split.to_frame().to_parquet(self.split_data_filepath_(data_type))
         return self.cv_splitter_gen(**{"test_fold": ind_split})

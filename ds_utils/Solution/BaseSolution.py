@@ -50,6 +50,7 @@ class MixinSolution(ISolution):
 
         # default state
         self.is_fitted: bool = False
+        self.is_loaded: bool = False
 
         self.refresh_level_criterion: RefreshLevel = RefreshLevel("model")
         self.refresh_level: RefreshLevel = refresh_level
@@ -278,6 +279,11 @@ class MixinSolution(ISolution):
         predictions = self._post_process_tournament(yhat=yhat, data_type=data_type)
         self._create_submission_file(predictions[self.default_yhat_pct_name], data_type=data_type)
         return self
+
+    def _save_feature_columns(self):
+        file_path = os.path.join(self.working_dir, "features.json")
+        with open(file_path, "w") as fp:
+            json.dump(self.data_manager.cols_feature, fp)
 
 
 if "__main__" == __name__:

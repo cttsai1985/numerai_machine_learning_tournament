@@ -1,4 +1,4 @@
-from .DataHelper import DataHelper, EvaluationDataHelper
+from .DataHelper import DataHelper, EvaluationDataHelper, NeutralizationDataHelper
 from .SplitHelper import PredefinedSplitHelper
 from .NeutralizationHelper import INeutralizationHelper
 from .NeutralizationHelper import MultiRegNeutralizationHelper

@@ -14,14 +14,14 @@ def parse_parameters():
     parser = argparse.ArgumentParser()
     parser.add_argument("--refresh", action="store_true", help="refresh dataset")
     parser.add_argument("--update-only", action="store_true", help="download all datasets.")
-    parser.add_argument("--extension", default="parquet", help="set extension")
+    parser.add_argument("--extension", default="parquet", type=str, help="set extension")
+    parser.add_argument(
+        "--data-dir", default="latest_tournament_datasets", type=str, help="data folder name under the root")
     args = parser.parse_args()
     return args
 
 
 if "__main__" == __name__:
-    _args = parse_parameters()
-    helper = NumerAPIHelper()
 
     filenames: Optional[List[str]] = [
         "example_predictions.csv",
@@ -35,7 +35,10 @@ if "__main__" == __name__:
         # "features.json",
 
     ]
+
+    _args = parse_parameters()
     if not _args.update_only:
         filenames = None
 
+    helper = NumerAPIHelper(data_dir=_args.data_dir)
     helper.download_latest_dataset(filenames=filenames, refresh=_args.refresh)

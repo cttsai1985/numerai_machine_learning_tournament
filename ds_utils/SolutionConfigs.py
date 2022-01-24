@@ -22,6 +22,7 @@ from ds_utils import Helper
 from ds_utils import Metrics
 from ds_utils import LGBMUtils
 from ds_utils import Utils
+from ds_utils import FilenameTemplate as ft
 
 
 # Scikit-Learn
@@ -76,7 +77,6 @@ _available_sklearn_scorer: Dict[str, Callable] = dict([
     ("sklearn_pearson_scorer", sklearn_pearson_scorer),
 ])
 
-
 _available_neutralization_helper: Dict[str, Callable] = dict([
     ("naive_neutralization", Helper.MultiNaiveNeutralizationHelper),
     ("regression_neutralization", Helper.MultiRegNeutralizationHelper),
@@ -85,18 +85,21 @@ _available_neutralization_helper: Dict[str, Callable] = dict([
 
 class BaseSolutionConfigs:
     def __init__(
-            self, root_resource_path: str, configs_file_path: str = "configs.yaml", eval_data_type: str = None, ):
+            self, root_resource_path: str, configs_file_path: str = "configs.yaml",
+            eval_data_type: Optional[str] = None, ):
         self.configs_file_path: Optional[str] = configs_file_path
         self.configs_hash_str: Optional[str] = None
 
         self.root_resource_path: str = root_resource_path
-        self.meta_data_dir: str = os.path.join(self.root_resource_path, "metadata")
+        self.meta_data_dir: str = os.path.join(self.root_resource_path, ft.default_meta_data_dir_name)
+
+        self.feature_columns_filename: Optional[str] = None
 
         self.eval_data_type: str = eval_data_type if eval_data_type is not None else "training"
 
         self.data_manager: Optional["DataManager"] = None
 
-        self.dataset_name: Optional[str] = "latest_tournament_datasets"
+        self.dataset_name: Optional[str] = ft.default_data_dir_name
         self.data_mapping: Optional[Dict[str, str]] = None
         self.column_target: Optional[str] = "target"
         self.columns_group: Optional[List[str]] = ["era"]
@@ -104,6 +107,10 @@ class BaseSolutionConfigs:
         self.num_class: int = 1
 
         self.model_name: str = "foobar"
+
+        # neutralization for target
+        self.column_neutralization_reference: Optional[str] = None
+        self.neutralization_proportion: float = 0.5
 
         self.label2index: Dict[int, float] = dict()
         self.index2label: Dict[float, int] = dict()
@@ -118,17 +125,35 @@ class BaseSolutionConfigs:
         self.scoring_func: Callable = PerformanceTracker().score
         # self._save_yaml_configs()
 
+    @property
+    def default_feature_columns_file_path_(self) -> str:
+        default_file_path: str = os.path.join(self.meta_data_dir, ft.default_feature_collection_filename)
+        if not all([os.path.exists(default_file_path), os.path.isfile(default_file_path)]):
+            raise ValueError()
+
+        return default_file_path
+
+    def feature_columns_file_path_(self, feature_columns_file_path: Optional[str] = None) -> str:
+        if feature_columns_file_path is not None:
+            if all([os.path.exists(feature_columns_file_path), os.path.isfile(feature_columns_file_path)]):
+                file_path = feature_columns_file_path
+                logging.info(f"load feature columns from model location: {file_path}")
+                return file_path
+
+        if self.feature_columns_filename is not None:
+            feature_columns_file_path = os.path.join(self.meta_data_dir, self.feature_columns_filename)
+            if all([os.path.exists(feature_columns_file_path), os.path.isfile(feature_columns_file_path)]):
+                file_path = feature_columns_file_path
+                logging.info(f"load alternative feature columns from model location: {file_path}")
+                return file_path
+
+        file_path: str = self.default_feature_columns_file_path_
+        logging.info(f"load feature target_columns from default location: {file_path}")
+        return file_path
+
     def load_feature_columns_from_json(
             self, feature_columns_file_path: Optional[str] = None) -> List[str]:
-        default_file_path: str = os.path.join(self.meta_data_dir, "features_numerai.json")
-        if feature_columns_file_path is None:
-            file_path = default_file_path
-            logging.info(f"load feature target_columns from default location: {feature_columns_file_path}")
-
-        if not all([os.path.exists(feature_columns_file_path), os.path.isfile(feature_columns_file_path)]):
-            file_path = default_file_path
-            logging.info(f"load feature target_columns from default location: {file_path}")
-
+        file_path: str = self.feature_columns_file_path_(feature_columns_file_path=feature_columns_file_path)
         with open(file_path, "r") as fp:
             columns_feature = json.load(fp)
 
@@ -252,6 +277,8 @@ class SolutionConfigs(BaseSolutionConfigs):
             "data_mapping": self.data_mapping,
             "column_target": self.column_target,
             "columns_group": self.columns_group,
+            "column_neutralization_reference": self.column_neutralization_reference,
+            "neutralization_proportion": self.neutralization_proportion,
             "model_name": self.model_name,
             "model_gen_query": self.model_gen_query,
             "model_base_params": self.model_base_params,

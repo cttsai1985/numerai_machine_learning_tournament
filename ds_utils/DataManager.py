@@ -7,7 +7,7 @@ import pandas as pd
 from pathlib import Path
 from typing import Optional, Callable, Any, Dict, List, Tuple, Union
 
-from ds_utils.Helper import DataHelper, EvaluationDataHelper
+from ds_utils.Helper import DataHelper, EvaluationDataHelper, NeutralizationDataHelper
 from ds_utils import FilenameTemplate
 
 _DATA_PAIRS: List[Tuple[str]] = FilenameTemplate.numerai_data_filename_pairs
@@ -17,7 +17,8 @@ _EXAMPLE_PAIRS: List[Tuple[str]] = FilenameTemplate.numerai_example_filename_pai
 class DataManager:
     def __init__(
             self, working_dir: str = "./", data_mapping: Dict[str, str] = None, col_target: str = "target",
-            cols_group: Optional[List[str]] = None, cols_feature: Optional[List[str]] = None, **kwargs):
+            cols_group: Optional[List[str]] = None, cols_feature: Optional[List[str]] = None,
+            col_neutralization_reference: str = "target_nomi_60", neutralization_proportion: float = 0.5, **kwargs):
         self.working_dir: str = working_dir if working_dir else "./"
 
         self.example_mapping: Dict[str, str] = dict(_EXAMPLE_PAIRS)
@@ -34,6 +35,9 @@ class DataManager:
         self.col_target: str = col_target
         self.cols_group: Optional[List[str]] = cols_group if cols_group and isinstance(cols_group, list) else ["era"]
         self.cols_feature: Optional[List[str]] = cols_feature
+
+        self.col_neutralization_reference: Optional[str] = col_neutralization_reference
+        self.neutralization_proportion: float = neutralization_proportion
 
         self.label2index: Optional[Dict[int, float]] = None
         self.index2label: Optional[Dict[float, int]] = None
@@ -52,10 +56,19 @@ class DataManager:
     @classmethod
     def from_configs(cls, configs: "SolutionConfigs", **kwargs):
         # TODO: implemented and refactor other dependency
+
+        column_neutralization_reference: Optional[str] = None
+        neutralization_proportion: float = 0.5
+        if configs.column_neutralization_reference is not None:
+            column_neutralization_reference = configs.column_neutralization_reference
+            neutralization_proportion = configs.neutralization_proportion
+
         # configs.load_feature_columns_from_json()
         return cls(
             working_dir=configs.input_data_dir, data_mapping=configs.data_mapping, col_target=configs.column_target,
-            cols_group=configs.columns_group, cols_feature=configs.columns_feature, )
+            cols_group=configs.columns_group, cols_feature=configs.columns_feature,
+            cols_neutralization_reference=column_neutralization_reference,
+            neutralization_proportion=neutralization_proportion)
 
     def _check_status(self):
         logging.info(f"found {len(self.data_mapping)} data: in {self.data_mapping.keys()}")
@@ -77,6 +90,17 @@ class DataManager:
 
         return True
 
+    @staticmethod
+    def impute_target(y: pd.Series, na_value: Optional[float] = None) -> pd.Series:
+        if y.isna().any():
+            logging.info(f"labels contained nan: {sorted(y.unique().tolist())}")
+            if na_value is None:
+                na_value = 0.5
+
+            y.fillna(na_value, inplace=True)
+
+        return y
+
     def cast_target(self, y: pd.Series, cast_type: Optional[str] = None) -> pd.Series:
         if cast_type is None:
             return y
@@ -85,10 +109,7 @@ class DataManager:
         if not index_mapping:
             return y
 
-        if y.isna().any():
-            logging.info(f"labels contained nan: {sorted(y.unique().tolist())}")
-            y.fillna(0.5, inplace=True)
-
+        y = self.impute_target(y, na_value=0.5)
         _y = y.map(index_mapping)
         _y_isna = _y.isna()
         if _y_isna.any():
@@ -129,13 +150,25 @@ class DataManager:
         cols_feature = self.cols_feature
         col_target = self.col_target
         cols_group = self.cols_group
+
         if for_evaluation:  # TODO: default cols_feature
             col_target = "target"
             cols_group = ["era"]
 
-        obj = EvaluationDataHelper.from_params(
-            filename=filename, dataset_type=data_type, cols_feature=cols_feature, col_target=col_target,
-            cols_group=cols_group)
+            obj = EvaluationDataHelper.from_params(
+                filename=filename, dataset_type=data_type, cols_feature=cols_feature, col_target=col_target,
+                cols_group=cols_group)
+
+        elif self.col_neutralization_reference is not None:
+            obj = NeutralizationDataHelper.from_params(
+                filename=filename, dataset_type=data_type, cols_feature=cols_feature, col_target=col_target,
+                cols_group=cols_group, col_neutralization_reference=self.col_neutralization_reference,
+                neutralization_proportion=self.neutralization_proportion)
+
+        else:  # TODO: fix logics with evaluate_with_y
+            obj = EvaluationDataHelper.from_params(
+                filename=filename, dataset_type=data_type, cols_feature=cols_feature, col_target=col_target,
+                cols_group=cols_group)
 
         if not preload:
             return obj

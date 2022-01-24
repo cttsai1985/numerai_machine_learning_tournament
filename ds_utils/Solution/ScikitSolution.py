@@ -35,17 +35,14 @@ class ScikitEstimatorSolution(MixinSolution):
         if cv_splitter is not None:
             self.has_cv_splitter = True
 
-    def _cast_for_classifier(self, target: pd.Series, cast_type: str):
+    def _cast_target(self, target: pd.Series, cast_type: str, **kwargs):
         if self.data_manager.has_cast_mapping(cast_type):
-            return self.data_manager.cast_target(target, cast_type)
+            return self.data_manager.cast_target(y=target, cast_type=cast_type)
 
         return target
 
-    def _cast_for_classifier_fit(self, target: pd.Series) -> pd.Series:
-        return self._cast_for_classifier(target=target, cast_type="label2index")
-
-    def _cast_for_classifier_predict(self, target: pd.Series) -> pd.Series:
-        return self._cast_for_classifier(target=target, cast_type="index2label")
+    def _impute_for_model_fit(self, target: pd.Series, na_value: Optional[float] = None, **kwargs) -> pd.Series:
+        return self.data_manager.impute_target(y=target, na_value=na_value)
 
     @property
     def model_filepath_(self) -> str:
@@ -65,7 +62,7 @@ class ScikitEstimatorSolution(MixinSolution):
         if not (os.path.exists(_model_filepath) or os.path.isfile(_model_filepath)):
             return self
 
-        if self.is_fitted:
+        if self.is_loaded:
             logging.info(f"model fitted and loaded, from {_model_filepath}")
             return self
 
@@ -81,14 +78,25 @@ class ScikitEstimatorSolution(MixinSolution):
             raise ValueError(f"model mismatched: from file ({type(model)}) != model ({type(self.model)})")
 
         self.model = model
+        self.is_loaded = True
         self.is_fitted = True
         return self
 
-    def _do_cross_val(self, data_type: Optional[str] = None):
+    def _fit_model(self, data_type: str):
+        raise NotImplementedError()
+
+    def _do_cross_val(self, data_type: str):
         pass
 
-    def _do_model_fit(self, data_type: Optional[str] = None):
-        raise NotImplementedError()
+    def _do_model_fit(self, data_type: str):
+        if self.is_fitted:
+            return self
+
+        self._fit_model(data_type=data_type)
+        self.is_fitted = True
+        self._save_model()
+        self._save_feature_columns()
+        return self
 
     def _do_inference_for_validation(self, data_type: str) -> pd.Series:
         raise NotImplementedError()
@@ -126,22 +134,14 @@ class RegressorSolution(ScikitEstimatorSolution):
             refresh_level=refresh_level, data_manager=data_manager, model=model, fit_params=fit_params,
             cv_splitter=cv_splitter, scoring_func=scoring_func, working_dir=working_dir, *kwargs)
 
-    def _do_model_fit(self, data_type: Optional[str] = None):
-        if self.is_fitted:
-            return self
-
+    def _fit_model(self, data_type: str):
         train_data = self.data_manager.get_data_helper_by_type(data_type=data_type)
         X, y, groups = train_data.data_
 
-        logging.info(f"training model...")
-        if train_data.y_name_ != "target":
-            if y.isna().any():
-                logging.info(f"fitting y with impute na as 0.5")
-                y.fillna(.5, inplace=True)
+        y = self._impute_for_model_fit(target=y, na_value=0.5)
 
+        logging.info(f"training model...")
         self.model.fit(X, y, **self.fit_params)  # TODO: add fit_params:
-        self.is_fitted = True
-        self._save_model()
         return self
 
     def _do_inference_for_validation(self, data_type: str) -> pd.Series:
@@ -169,20 +169,11 @@ class RankerSolution(ScikitEstimatorSolution):
             refresh_level=refresh_level, data_manager=data_manager, model=model, fit_params=fit_params,
             cv_splitter=cv_splitter, scoring_func=scoring_func, working_dir=working_dir, **kwargs)
 
-    def _do_model_fit(self, data_type: Optional[str] = None):
-        if self.is_fitted:
-            return self
+    def _fit_model(self, data_type: str):
+        raise NotImplementedError()
 
-        train_data = self.data_manager.get_data_helper_by_type(data_type=data_type)
-        X, y, groups = train_data.data_
-
-        _groups = train_data.group_counts_
-
-        logging.info(f"training model...")
-        self.model.fit(X, self._cast_for_classifier_fit(y), group=_groups, **self.fit_params)  # TODO: add fit_params:
-        self.is_fitted = True
-        self._save_model()
-        return self
+    def _cast_for_ranker_fit(self, target: pd.Series, **kwargs) -> pd.Series:
+        return self._cast_target(target=target, cast_type="label2index")
 
     def inference_on_group(self, infer_data) -> pd.Series:
         X, y, groups = infer_data.data_
@@ -207,18 +198,39 @@ class RankerSolution(ScikitEstimatorSolution):
         return predictions[self.default_yhat_name]
 
 
-class CatBoostRankerSolution(RankerSolution):
-    def _do_model_fit(self, data_type: Optional[str] = None):
-        if self.is_fitted:
-            return self
-
+class LGBMRankerSolution(RankerSolution):
+    def _fit_model(self, data_type: str):
         train_data = self.data_manager.get_data_helper_by_type(data_type=data_type)
         X, y, groups = train_data.data_
 
+        _groups = train_data.group_counts_
+
         logging.info(f"training model...")
-        self.model.fit(X, self._cast_for_classifier_fit(y), group_id=groups, **self.fit_params)  # TODO: add fit_params:
-        self.is_fitted = True
-        self._save_model()
+        self.model.fit(X, self._cast_for_ranker_fit(y), group=_groups, **self.fit_params)  # TODO: add fit_params:
+        return self
+
+
+class XGBRankerSolution(RankerSolution):
+    def _fit_model(self, data_type: str):
+        train_data = self.data_manager.get_data_helper_by_type(data_type=data_type)
+        X, y, groups = train_data.data_
+
+        _groups = train_data.group_counts_
+        _y = self._impute_for_model_fit(target=y, na_value=0.5)
+
+        logging.info(f"training model...")
+        self.model.fit(X, _y, group=_groups, **self.fit_params)  # TODO: add fit_params:
+        return self
+
+
+class CatBoostRankerSolution(RankerSolution):
+    def _fit_model(self, data_type: str):
+        train_data = self.data_manager.get_data_helper_by_type(data_type=data_type)
+        X, y, groups = train_data.data_
+        _y = self._impute_for_model_fit(target=y, na_value=0.5)
+
+        logging.info(f"training model...")
+        self.model.fit(X, _y, group_id=groups, **self.fit_params)  # TODO: add fit_params:
         return self
 
 
@@ -231,20 +243,21 @@ class ClassifierSolution(ScikitEstimatorSolution):
             refresh_level=refresh_level, data_manager=data_manager, model=model, fit_params=fit_params,
             cv_splitter=cv_splitter, scoring_func=scoring_func, working_dir=working_dir, **kwargs)
 
-    def _do_model_fit(self, data_type: Optional[str] = None):
-        if self.is_fitted:
-            return self
-
+    def _fit_model(self, data_type: str):
         train_data = self.data_manager.get_data_helper_by_type(data_type=data_type)
         X, y, groups = train_data.data_
 
         logging.info(f"training model...")
         self.model.fit(X, self._cast_for_classifier_fit(y), **self.fit_params)  # TODO: add fit_params:
-        self.is_fitted = True
-        self._save_model()
         return self
 
-    def _cast_for_classifier_predict_proba(self, target: np.ndarray) -> np.ndarray:
+    def _cast_for_classifier_fit(self, target: pd.Series, **kwargs) -> pd.Series:
+        return self._cast_target(target=target, cast_type="label2index")
+
+    def _cast_for_classifier_predict(self, target: pd.Series, **kwargs) -> pd.Series:
+        return self._cast_target(target=target, cast_type="index2label")
+
+    def _cast_for_classifier_predict_proba(self, target: np.ndarray, **kwargs) -> np.ndarray:
         ar = np.dot(target, list(self.data_manager.index2label.values()))
         if np.isnan(ar).any():
             pdb.set_trace()
