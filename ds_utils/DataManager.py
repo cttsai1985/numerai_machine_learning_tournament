@@ -18,7 +18,7 @@ class DataManager:
     def __init__(
             self, working_dir: str = "./", data_mapping: Dict[str, str] = None, col_target: str = "target",
             cols_group: Optional[List[str]] = None, cols_feature: Optional[List[str]] = None,
-            col_neutralization_reference: str = "target_nomi_60", neutralization_proportion: float = 0.5, **kwargs):
+            col_neutralization_reference: Optional[str] = None, neutralization_proportion: float = 0.5, **kwargs):
         self.working_dir: str = working_dir if working_dir else "./"
 
         self.example_mapping: Dict[str, str] = dict(_EXAMPLE_PAIRS)
