@@ -1,7 +1,7 @@
 #!/usr/bin/bash
 
 RUN_UPDATE=true
-# RUN_UPDATE=false
+RUN_UPDATE=false
 RUN_BASE_LGBM=true
 # RUN_BASE_LGBM=false
 RUN_BASE_CATB=true
@@ -56,6 +56,9 @@ then
   python run.py --configs ../infer_configs/infer_mix_light_multiclf.yaml
   python run.py --configs ../infer_configs/infer_mix_cat_multiclf.yaml
   python run.py --configs ../infer_configs/infer_mix_cat_ranker.yaml
+  
+  python run.py --configs ../infer_configs/infer_mix_top_multiclf.yaml
+  python run.py --configs ../infer_configs/infer_mix_top_ranker.yaml
 fi
 
 
