@@ -1,7 +1,7 @@
 #!/usr/bin/bash
 
 RUN_UPDATE=true
-RUN_UPDATE=false
+# RUN_UPDATE=false
 RUN_BASE_LGBM=true
 # RUN_BASE_LGBM=false
 RUN_BASE_CATB=true
