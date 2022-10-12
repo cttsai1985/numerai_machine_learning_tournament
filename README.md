@@ -1,6 +1,8 @@
-### NumerAPI
+## README
 
-https://numerapi.readthedocs.io/en/latest/api/numerapi.html
-
-
-#TODO: best practice api key with docker
+This is a monolith with full modeling lifecycle participating numerai tournament. It contains E2E pipelines for:
+- training scikit-learn compatible gradient boosting models (such as XGBoost, LightGBM and CatBoost)
+- validate models using industry standard metrics such as Sharpe, Corr, Stdev, MDD.
+- using optuna for hyperparameters tuning
+- custermize objective, metrics and postprocessing such as neutralization
+- weekly inference to meet the tournament requeiremt
