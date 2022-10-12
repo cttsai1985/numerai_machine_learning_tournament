@@ -6,3 +6,6 @@ This is a monolith with full modeling lifecycle participating numerai tournament
 - using optuna for hyperparameters tuning
 - custermize objective, metrics and postprocessing such as neutralization
 - weekly inference to meet the tournament requeiremt
+
+### Info for NumerAI tournament
+https://docs.numer.ai/tournament/learn
